@@ -1,0 +1,3 @@
+[functions.competition-api]
+# The function performs PIN authentication itself; bootstrap is separately secret-gated.
+verify_jwt = false
