@@ -28,6 +28,15 @@
 .member-total { color: var(--muted); font-size: 10px; }
 .essay-table-wrap { overflow-x: auto; }
 .essay-table { width: 100%; border-collapse: collapse; min-width: 630px; }
+.team-essay-table { min-width: 860px; }
+.team-essay-table th:first-child, .team-essay-table td:first-child { position: sticky; left: 0; z-index: 1; background: #fff; }
+.team-essay-table thead th:first-child { background: #fafbf8; }
+.team-essay-table th, .team-essay-table td { vertical-align: middle; }
+.team-essay-table tbody th { min-width: 74px; font-size: 11px; font-weight: 650; text-align: left; white-space: nowrap; }
+.grid-score-cell { min-width: 105px; display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.grid-score-cell .points-output { font-size: 10px; }
+.team-essay-table .status-pill { max-width: 155px; white-space: normal; }
+.team-essay-table .row-save { white-space: nowrap; }
 .essay-table th { height: 34px; padding: 0 13px; background: #fafbf8; color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
 .essay-table td { height: 46px; padding: 5px 13px; border-top: 1px solid #edf0eb; font-size: 11px; }
 .essay-number { font-weight: 650; }

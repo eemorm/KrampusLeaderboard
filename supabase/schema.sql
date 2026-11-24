@@ -138,6 +138,36 @@ begin
   if not found then raise exception 'Essay is already submitted or unavailable'; end if;
 end $$;
 
+-- Team submissions are atomic per essay number: all member scores lock together.
+create or replace function public.submit_team_essay(p_essay_number integer,p_raw_scores integer[]) returns void
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_team uuid; v_member_count integer; v_updated integer:=0; item record; v_score integer;
+begin
+  v_team:=public.current_team_id();
+  if v_team is null or public.is_competition_admin() then raise exception 'Team session required'; end if;
+  if p_essay_number is null or p_essay_number not between 1 and 15 then raise exception 'Essay number must be 1 through 15'; end if;
+  select count(*) into v_member_count from public.members where team_id=v_team;
+  if v_member_count not in (4,5) or p_raw_scores is null or cardinality(p_raw_scores)<>v_member_count then raise exception 'Submit one score for every team member'; end if;
+  if (select count(*) from public.members m join public.essays e on e.member_id=m.id where m.team_id=v_team and e.essay_number=p_essay_number)<>v_member_count then raise exception 'Essay records are incomplete'; end if;
+  for item in
+    select m.member_number,e.id,e.raw_score,e.is_locked
+    from public.members m join public.essays e on e.member_id=m.id
+    where m.team_id=v_team and e.essay_number=p_essay_number
+    order by m.member_number for update of e
+  loop
+    v_score:=p_raw_scores[item.member_number];
+    if v_score is null or v_score not between 0 and 5 then raise exception 'Every member score must be 0 through 5'; end if;
+    if item.is_locked then
+      if item.raw_score is distinct from v_score then raise exception 'A locked member score cannot be changed'; end if;
+    else
+      if item.raw_score is not null then raise exception 'An administrator correction is pending'; end if;
+      update public.essays set raw_score=v_score,is_locked=true,submitted_at=now(),updated_at=now() where id=item.id;
+      v_updated:=v_updated+1;
+    end if;
+  end loop;
+  if v_updated=0 then raise exception 'This essay is already submitted and locked'; end if;
+end $$;
+
 create or replace function public.submit_extra_points(p_points integer) returns void
 language plpgsql security definer set search_path=public,pg_temp as $$
 declare v_team uuid;
@@ -159,7 +189,7 @@ begin
     'submitted_essays',(select count(*) from public.members m join public.essays e on e.member_id=m.id where m.team_id=t.id and e.is_locked),
     'maximum_essays',(select count(*) from public.members m where m.team_id=t.id)*15,'extra_points',x.points,'extra_locked',x.is_locked,
     'members',(select jsonb_agg(jsonb_build_object('id',m.id,'member_name',m.member_name,'member_number',m.member_number,
-      'member_total',(select coalesce(sum(e.competition_points),0) from public.essays e where e.member_id=m.id and e.is_locked and not e.is_dropped),
+      'member_total',(select coalesce(sum(e.competition_points),0) from public.essays e where e.member_id=m.id and e.is_locked),
       'essays',(select jsonb_agg(jsonb_build_object('id',e.id,'essay_number',e.essay_number,'raw_score',e.raw_score,'competition_points',e.competition_points,'is_locked',e.is_locked,'is_dropped',e.is_dropped) order by e.essay_number) from public.essays e where e.member_id=m.id)) order by m.member_number) from public.members m where m.team_id=t.id)) order by t.team_name),'[]'::jsonb)
   into result from public.teams t join public.team_extra_points x on x.team_id=t.id;
   return result;
@@ -173,17 +203,69 @@ begin
     values(auth.uid(),p_action,p_team,p_essay,p_member,p_previous,p_new);
 end $$;
 
-create or replace function public.admin_set_essay_lock(p_essay_id uuid,p_locked boolean) returns void
+create or replace function public.admin_set_team_essay_lock(p_team_id uuid,p_essay_number integer,p_locked boolean) returns void
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare v_team uuid; v_member uuid; old_row jsonb;
+declare v_member_count integer; item record; old_row jsonb; new_row jsonb;
 begin
   if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
-  select m.team_id,e.member_id,jsonb_build_object('raw_score',e.raw_score,'competition_points',e.competition_points,'is_locked',e.is_locked)
-    into v_team,v_member,old_row from public.essays e join public.members m on m.id=e.member_id where e.id=p_essay_id for update of e;
+  if p_locked is null or p_essay_number is null or p_essay_number not between 1 and 15 then raise exception 'Essay lock selection is invalid'; end if;
+  perform 1 from public.teams where id=p_team_id for update;
+  select count(*) into v_member_count from public.members where team_id=p_team_id;
+  if v_member_count not in (4,5) then raise exception 'Team not found'; end if;
+  if (select count(*) from public.members m join public.essays e on e.member_id=m.id where m.team_id=p_team_id and e.essay_number=p_essay_number)<>v_member_count then raise exception 'Essay records are incomplete'; end if;
+  if p_locked and exists(select 1 from public.members m join public.essays e on e.member_id=m.id where m.team_id=p_team_id and e.essay_number=p_essay_number and e.raw_score is null) then raise exception 'Enter every member score before locking this essay'; end if;
+  for item in
+    select m.id as member_id,e.id,e.raw_score,e.competition_points,e.is_locked
+    from public.members m join public.essays e on e.member_id=m.id
+    where m.team_id=p_team_id and e.essay_number=p_essay_number
+    order by m.member_number for update of e
+  loop
+    if item.is_locked is distinct from p_locked then
+      old_row:=jsonb_build_object('raw_score',item.raw_score,'competition_points',item.competition_points,'is_locked',item.is_locked);
+      update public.essays set is_locked=p_locked,submitted_at=case when p_locked then coalesce(submitted_at,now()) else null end,updated_at=now() where id=item.id;
+      new_row:=jsonb_build_object('raw_score',item.raw_score,'competition_points',item.competition_points,'is_locked',p_locked);
+      perform public.admin_write_audit(case when p_locked then 'essay_locked' else 'essay_unlocked' end,p_team_id,item.id,item.member_id,old_row,new_row);
+    end if;
+  end loop;
+end $$;
+
+-- Keep the older RPC signature safe for cached clients while applying group locking.
+create or replace function public.admin_set_essay_lock(p_essay_id uuid,p_locked boolean) returns void
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_team uuid; v_essay_number integer;
+begin
+  if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
+  select m.team_id,e.essay_number into v_team,v_essay_number from public.essays e join public.members m on m.id=e.member_id where e.id=p_essay_id;
   if v_team is null then raise exception 'Essay not found'; end if;
-  if p_locked and (old_row->>'raw_score') is null then raise exception 'Set a score before locking'; end if;
-  update public.essays set is_locked=p_locked,submitted_at=case when p_locked then coalesce(submitted_at,now()) else null end,updated_at=now() where id=p_essay_id;
-  perform public.admin_write_audit(case when p_locked then 'essay_locked' else 'essay_unlocked' end,v_team,p_essay_id,v_member,old_row,jsonb_build_object('is_locked',p_locked));
+  perform public.admin_set_team_essay_lock(v_team,v_essay_number,p_locked);
+end $$;
+
+create or replace function public.admin_set_team_essay_scores(p_team_id uuid,p_essay_number integer,p_raw_scores integer[]) returns void
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_member_count integer; item record; v_score integer; old_row jsonb; new_row jsonb;
+begin
+  if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
+  if p_essay_number is null or p_essay_number not between 1 and 15 then raise exception 'Essay number must be 1 through 15'; end if;
+  perform 1 from public.teams where id=p_team_id for update;
+  select count(*) into v_member_count from public.members where team_id=p_team_id;
+  if v_member_count not in (4,5) or p_raw_scores is null or cardinality(p_raw_scores)<>v_member_count then raise exception 'Submit one score for every team member'; end if;
+  if (select count(*) from public.members m join public.essays e on e.member_id=m.id where m.team_id=p_team_id and e.essay_number=p_essay_number)<>v_member_count then raise exception 'Essay records are incomplete'; end if;
+  for item in
+    select m.member_number,m.id as member_id,e.id,e.raw_score,e.competition_points,e.is_locked,e.is_dropped
+    from public.members m join public.essays e on e.member_id=m.id
+    where m.team_id=p_team_id and e.essay_number=p_essay_number
+    order by m.member_number for update of e
+  loop
+    v_score:=p_raw_scores[item.member_number];
+    if v_score is null or v_score not between 0 and 5 then raise exception 'Every member score must be 0 through 5'; end if;
+    if item.raw_score is distinct from v_score then
+      old_row:=jsonb_build_object('raw_score',item.raw_score,'competition_points',item.competition_points,'is_locked',item.is_locked,'is_dropped',item.is_dropped);
+      update public.essays set raw_score=v_score,updated_at=now() where id=item.id;
+      select jsonb_build_object('raw_score',raw_score,'competition_points',competition_points,'is_locked',is_locked,'is_dropped',is_dropped)
+        into new_row from public.essays where id=item.id;
+      perform public.admin_write_audit('essay_score_corrected',p_team_id,item.id,item.member_id,old_row,new_row);
+    end if;
+  end loop;
 end $$;
 
 create or replace function public.admin_set_essay_score(p_essay_id uuid,p_raw_score integer) returns void
@@ -332,13 +414,15 @@ grant all on all tables in schema public to service_role;
 grant usage,select on all sequences in schema public to service_role;
 grant select on public.public_leaderboard to anon,authenticated;
 grant select on public.teams,public.members,public.essays,public.team_extra_points,public.audit_log to authenticated;
-revoke all on function public.current_team_id(),public.is_competition_admin(),public.team_dashboard(),public.submit_essay(uuid,integer),public.submit_extra_points(integer),public.admin_overview(),public.admin_set_essay_lock(uuid,boolean),public.admin_set_essay_score(uuid,integer),public.admin_set_essay_dropped(uuid,boolean),public.admin_set_extra_lock(uuid,boolean),public.admin_set_extra_points(uuid,integer),public.admin_audit_log(integer) from public,anon;
+revoke all on function public.current_team_id(),public.is_competition_admin(),public.team_dashboard(),public.submit_essay(uuid,integer),public.submit_team_essay(integer,integer[]),public.submit_extra_points(integer),public.admin_overview(),public.admin_set_essay_lock(uuid,boolean),public.admin_set_team_essay_lock(uuid,integer,boolean),public.admin_set_team_essay_scores(uuid,integer,integer[]),public.admin_set_essay_score(uuid,integer),public.admin_set_essay_dropped(uuid,boolean),public.admin_set_extra_lock(uuid,boolean),public.admin_set_extra_points(uuid,integer),public.admin_audit_log(integer) from public,anon,authenticated;
 grant execute on function public.current_team_id(),public.is_competition_admin() to authenticated;
 grant execute on function public.team_dashboard() to authenticated;
-grant execute on function public.submit_essay(uuid,integer) to authenticated;
+grant execute on function public.submit_team_essay(integer,integer[]) to authenticated;
 grant execute on function public.submit_extra_points(integer) to authenticated;
 grant execute on function public.admin_overview() to authenticated;
 grant execute on function public.admin_set_essay_lock(uuid,boolean) to authenticated;
+grant execute on function public.admin_set_team_essay_lock(uuid,integer,boolean) to authenticated;
+grant execute on function public.admin_set_team_essay_scores(uuid,integer,integer[]) to authenticated;
 grant execute on function public.admin_set_essay_score(uuid,integer) to authenticated;
 grant execute on function public.admin_set_essay_dropped(uuid,boolean) to authenticated;
 grant execute on function public.admin_set_extra_lock(uuid,boolean) to authenticated;

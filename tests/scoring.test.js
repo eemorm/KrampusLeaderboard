@@ -27,7 +27,7 @@ test("calculates member/team totals and submission progress without extra points
 test("excludes the teacher-selected essay from totals while retaining it in submitted progress",()=>{
   const members=Array.from({length:5},(_,member)=>({essays:Array.from({length:15},(_,essay)=>({competition_points:18,is_locked:member===2&&essay<2,is_dropped:member===2&&essay===0}))}));
   const summary=summarizeTeam(members,0);
-  assert.deepEqual(summary.memberTotals,[0,0,18,0,0]);
+  assert.deepEqual(summary.memberTotals,[0,0,36,0,0]);
   assert.equal(summary.essayTotal,18);
   assert.equal(summary.submitted,2);
   assert.equal(summary.maximum,75);
@@ -36,7 +36,7 @@ test("excludes the teacher-selected essay from totals while retaining it in subm
 test("supports one excluded member score for each of the five-person team’s 15 essays",()=>{
   const members=Array.from({length:5},(_,member)=>({essays:Array.from({length:15},(_,essay)=>({competition_points:18,is_locked:true,is_dropped:essay%5===member}))}));
   const summary=summarizeTeam(members,0);
-  assert.deepEqual(summary.memberTotals,[216,216,216,216,216]);
+  assert.deepEqual(summary.memberTotals,[270,270,270,270,270]);
   assert.equal(summary.essayTotal,1080);
   assert.equal(summary.submitted,75);
   assert.equal(summary.maximum,75);

@@ -105,9 +105,9 @@ Raw score conversion is centralized in `js/scoring.js` and mirrored by a stored 
 | 4 | 15 |
 | 5 | 18 |
 
-The database rejects scores outside 0–5. A team can submit each essay once; the submit RPC verifies its team from the signed token, recalculates points in Postgres, and locks the essay atomically. Extra points are whole numbers, including negative values and zero, and are included in the public total after they are locked. Admin score corrections preserve the essay’s current lock state and are audited; administrators can also unlock and re-lock an essay when needed. Individual member totals remain inside the authenticated team/admin dashboard and are never in the public view.
+The database rejects scores outside 0–5. Teams submit one essay number at a time with one score for every member in a single atomic operation. The RPC verifies the signed team identity, recalculates points in Postgres, and locks all member scores for that essay together. Extra points are whole numbers, including negative values and zero, and are included in the public total after they are locked. Admin score corrections preserve the essay’s current lock state and are audited; administrators can also lock or unlock all team scores for an essay number together. Individual member totals remain inside the authenticated team/admin dashboard and are never in the public view.
 
-For the five-person team, an administrator chooses one member’s score to exclude for each of the 15 essay numbers. The admin dashboard shows how many of the 15 selections have been made. Choosing a different member replaces the previous choice for that essay, and both changes are recorded in the audit log. Excluded scores still count as submitted for progress reporting; the public leaderboard shows only the resulting team total.
+For the five-person team, an administrator chooses one member’s score to exclude for each of the 15 essay numbers. The admin dashboard shows how many of the 15 selections have been made. Choosing a different member replaces the previous choice for that essay, and both changes are recorded in the audit log. Excluded scores still count in that member’s internal total and submission progress, but are omitted from the team total and public leaderboard.
 
 ## Administrator access
 

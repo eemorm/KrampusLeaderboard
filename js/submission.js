@@ -1,20 +1,176 @@
 import {isConfigured, configurationMessage, login, createPrivateClient} from "./supabase.js";
 import {competitionPoints, formatScore, summarizeTeam} from "./scoring.js";
-import {readToken,storeToken,clearToken,escapeHTML,scoreOptions} from "./authentication.js";
-const loginPanel=document.querySelector("#login-panel"), dashboard=document.querySelector("#team-dashboard"), form=document.querySelector("#team-login-form"), errorBox=document.querySelector("#login-error");
-let auth=readToken("team"), client=null, team=null;
-function showError(message){errorBox.textContent=message;}
-function notice(message,type="success"){const box=dashboard.querySelector(".dashboard-notice");if(box){box.textContent=message;box.className=`dashboard-notice ${type}`;box.classList.remove("hidden");}}
-function hideLogin(){loginPanel.classList.add("hidden");dashboard.classList.remove("hidden");}
-form.addEventListener("submit",async event=>{event.preventDefault();showError("");const button=form.querySelector("button");button.disabled=true;button.textContent="Checking…";try{if(!isConfigured())throw new Error(configurationMessage());auth=await login(new FormData(form).get("pin"),"team");storeToken("team",auth);await start();}catch(error){showError(error.message);}finally{button.disabled=false;button.textContent="Continue";}});
-async function start(){if(!auth)return;client=createPrivateClient(auth.token);hideLogin();dashboard.innerHTML='<div class="state-card"><span class="spinner"></span>Loading your team dashboard…</div>';try{await loadDashboard();}catch(error){dashboard.innerHTML=`<div class="state-card error-state"><strong>We couldn’t load your dashboard.</strong>${escapeHTML(error.message)}<br><button class="button button-secondary button-small" id="sign-out" style="margin-top:14px">Sign in again</button></div>`;dashboard.querySelector("#sign-out").onclick=()=>{clearToken("team");auth=null;dashboard.classList.add("hidden");loginPanel.classList.remove("hidden");};}}
-async function loadDashboard(){const {data,error}=await client.rpc("team_dashboard");if(error)throw error;team=data;render();}
-function render(){const {members,extra_points,extra_locked,team_name}=team;const summary=summarizeTeam(members,extra_points);const complete=summary.submitted===summary.maximum;const extraInCorrection=!extra_locked&&extra_points!==null;dashboard.innerHTML=`<div class="dashboard-notice hidden" role="status"></div><div class="dashboard-top"><div><p class="eyebrow">TEAM SCORE DASHBOARD</p><h1>${escapeHTML(team_name)}</h1><p>${members.length} competitors · ${summary.maximum} essays</p></div><div class="dashboard-actions"><button class="button button-secondary button-small" id="refresh-dashboard">Refresh</button><button class="button button-secondary button-small" id="team-sign-out">Sign out</button></div></div><section class="progress-card"><div class="progress-line"><span>Essay submission progress</span><span>${summary.submitted} / ${summary.maximum} Essays Submitted</span></div><div class="progress-track" role="progressbar" aria-valuenow="${summary.submitted}" aria-valuemin="0" aria-valuemax="${summary.maximum}"><div class="progress-fill" style="width:${summary.maximum?summary.submitted/summary.maximum*100:0}%"></div></div><div class="progress-caption">${complete?"All essays are submitted and locked.":summary.submitted===0?"Not started · Submit each essay separately when it is ready.":"In progress · You can return later to submit the remaining essays."}</div></section><section class="extra-card"><div><h2>Team Extra Points</h2><p>These points are added to your team’s final score. Once submitted, only an administrator can change them.</p><p class="extra-current">Current: ${extra_points===null?"Not submitted":`${formatScore(extra_points)} points`} · ${extra_locked?"Submitted & locked":extraInCorrection?"Administrator correction":"Not submitted"}</p></div><form class="extra-form" id="extra-form"><input aria-label="Team extra points" type="number" step="1" id="extra-points" ${extra_locked||extraInCorrection?"disabled":""} value="${extra_points??""}" placeholder="Points"><button class="button button-primary button-small" type="submit" ${extra_locked||extraInCorrection?"disabled":""}>${extra_locked?"Locked":extraInCorrection?"Awaiting admin":"Submit & lock"}</button></form></section>${members.map(member=>`<section class="member-card"><div class="member-heading"><h2>${escapeHTML(member.member_name)}</h2><span class="member-total">${member.essays.filter(essay=>essay.is_locked).length} / ${member.essays.length} essays locked</span></div><div class="essay-table-wrap"><table class="essay-table"><thead><tr><th>Essay</th><th>Raw score</th><th>Competition points</th><th>Status</th><th>Action</th></tr></thead><tbody>${member.essays.map(essay=>{const adminCorrection=!essay.is_locked&&essay.raw_score!==null;return `<tr class="${essay.is_locked?"locked-row":""}" data-essay="${essay.id}"><td class="essay-number">Essay ${essay.essay_number}</td><td><select class="raw-score" aria-label="Essay ${essay.essay_number} raw score" ${essay.is_locked||adminCorrection?"disabled":""}>${scoreOptions(essay.raw_score)}</select></td><td class="points-output">${essay.competition_points===null?"—":`${essay.competition_points} pts`}</td><td><span class="status-pill ${essay.is_locked?"locked":""}">${essay.is_locked?"Submitted & locked":adminCorrection?"Admin correction":"Pending"}</span></td><td>${essay.is_locked?'<span class="status-pill locked">Locked</span>':adminCorrection?'<span class="status-pill">Awaiting admin</span>':`<button class="button button-primary button-small row-save" type="button" disabled>Submit & lock</button>`}</td></tr>`;}).join("")}</tbody></table></div></section>`).join("")}`;
-dashboard.querySelector(".progress-card").insertAdjacentHTML("afterend",`<div class="team-totals"><div><span>Team essay total</span><strong>${formatScore(summary.essayTotal)} <small>pts</small></strong></div><div><span>Team overall score</span><strong>${formatScore(summary.essayTotal+(extra_locked?Number(extra_points||0):0))} <small>pts</small></strong></div></div>`);
-dashboard.querySelector("#team-sign-out").onclick=()=>{clearToken("team");auth=null;client=null;dashboard.classList.add("hidden");loginPanel.classList.remove("hidden");document.querySelector("#team-pin").value="";};
-dashboard.querySelector("#refresh-dashboard").onclick=()=>loadDashboard().catch(error=>notice(error.message,"error"));
-dashboard.querySelectorAll(".raw-score").forEach(select=>{select.addEventListener("change",()=>{const row=select.closest("tr"),save=row.querySelector(".row-save");try{const pts=competitionPoints(select.value);row.querySelector(".points-output").textContent=pts===null?"—":`${pts} pts`;save.disabled=pts===null;}catch{select.value="";row.querySelector(".points-output").textContent="—";save.disabled=true;}});});
-dashboard.querySelectorAll(".row-save").forEach(button=>button.addEventListener("click",async()=>{const row=button.closest("tr"),select=row.querySelector(".raw-score"),raw=select.value;if(raw==="")return;const essay=row.dataset.essay;if(!confirm("Submit and lock this essay? Your team will not be able to edit it after submission."))return;button.disabled=true;button.textContent="Saving…";try{const {error}=await client.rpc("submit_essay",{p_essay_id:essay,p_raw_score:Number(raw)});if(error)throw error;await loadDashboard();notice("Essay submitted and locked.");}catch(error){button.disabled=false;button.textContent="Submit & lock";notice(error.message||"The essay could not be saved. Please retry.","error");}}));
-dashboard.querySelector("#extra-form").addEventListener("submit",async event=>{event.preventDefault();const input=dashboard.querySelector("#extra-points"),value=input.value;if(value===""||!Number.isInteger(Number(value))){notice("Enter a whole number for team extra points.","error");return;}if(!confirm("Submit and lock these team extra points? Only an administrator can change them afterward."))return;const button=event.currentTarget.querySelector("button");button.disabled=true;button.textContent="Saving…";try{const {error}=await client.rpc("submit_extra_points",{p_points:Number(value)});if(error)throw error;await loadDashboard();notice("Team extra points submitted and locked.");}catch(error){button.disabled=false;button.textContent="Submit & lock";notice(error.message||"Extra points could not be saved. Please retry.","error");}});
+import {readToken, storeToken, clearToken, escapeHTML, scoreOptions} from "./authentication.js";
+
+const loginPanel = document.querySelector("#login-panel");
+const dashboard = document.querySelector("#team-dashboard");
+const form = document.querySelector("#team-login-form");
+const errorBox = document.querySelector("#login-error");
+let auth = readToken("team");
+let client = null;
+let team = null;
+
+function showError(message) { errorBox.textContent = message; }
+function notice(message, type = "success") {
+  const box = dashboard.querySelector(".dashboard-notice");
+  if (box) {
+    box.textContent = message;
+    box.className = `dashboard-notice ${type}`;
+    box.classList.remove("hidden");
+  }
 }
-if(auth)start();
+function hideLogin() {
+  loginPanel.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+}
+
+form.addEventListener("submit", async event => {
+  event.preventDefault();
+  showError("");
+  const button = form.querySelector("button");
+  button.disabled = true;
+  button.textContent = "Checking…";
+  try {
+    if (!isConfigured()) throw new Error(configurationMessage());
+    auth = await login(new FormData(form).get("pin"), "team");
+    storeToken("team", auth);
+    await start();
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Continue";
+  }
+});
+
+async function start() {
+  if (!auth) return;
+  client = createPrivateClient(auth.token);
+  hideLogin();
+  dashboard.innerHTML = '<div class="state-card"><span class="spinner" aria-hidden="true"></span>Loading your team dashboard…</div>';
+  try {
+    await loadDashboard();
+  } catch (error) {
+    dashboard.innerHTML = `<div class="state-card error-state"><strong>We couldn’t load your dashboard.</strong>${escapeHTML(error.message)}<br><button class="button button-secondary button-small" id="sign-out" style="margin-top:14px">Sign in again</button></div>`;
+    dashboard.querySelector("#sign-out").onclick = signOut;
+  }
+}
+
+function signOut() {
+  clearToken("team");
+  auth = null;
+  client = null;
+  dashboard.classList.add("hidden");
+  loginPanel.classList.remove("hidden");
+  document.querySelector("#team-pin").value = "";
+}
+
+async function loadDashboard() {
+  const {data, error} = await client.rpc("team_dashboard");
+  if (error) throw error;
+  team = data;
+  render();
+}
+
+function renderEssayRow(essayNumber, members) {
+  const essays = members.map(member => member.essays.find(item => item.essay_number === essayNumber));
+  const lockedCount = essays.filter(essay => essay.is_locked).length;
+  const locked = lockedCount === essays.length;
+  const pendingAdminCorrection = essays.some(essay => !essay.is_locked && essay.raw_score !== null);
+  const status = locked ? "Submitted & locked" : lockedCount ? `Partially locked · ${lockedCount}/${essays.length}` : pendingAdminCorrection ? "Awaiting admin" : "Not submitted";
+  const statusClass = locked ? "locked" : "";
+  const scores = essays.map((essay, index) => {
+    const correction = !essay.is_locked && essay.raw_score !== null;
+    const disabled = essay.is_locked || correction;
+    return `<td><div class="grid-score-cell"><select class="raw-score" data-member-number="${index + 1}" aria-label="${escapeHTML(members[index].member_name)} essay ${essayNumber} score" ${disabled ? "disabled" : ""}>${scoreOptions(essay.raw_score)}</select><span class="points-output">${essay.competition_points === null ? "—" : `${essay.competition_points} pts`}</span></div></td>`;
+  }).join("");
+  const action = locked
+    ? '<span class="status-pill locked">Locked</span>'
+    : pendingAdminCorrection
+      ? '<span class="status-pill">Awaiting admin</span>'
+      : `<button class="button button-primary button-small row-save" type="button">Submit & lock</button>`;
+  return `<tr class="essay-grid-row" data-essay-number="${essayNumber}"><th scope="row">Essay ${essayNumber}</th>${scores}<td><span class="status-pill ${statusClass}">${status}</span></td><td>${action}</td></tr>`;
+}
+
+function render() {
+  const {members, extra_points, extra_locked, team_name} = team;
+  const summary = summarizeTeam(members, extra_points);
+  const complete = summary.submitted === summary.maximum;
+  const extraInCorrection = !extra_locked && extra_points !== null;
+  const essayNumbers = members[0]?.essays.map(essay => essay.essay_number) || [];
+  dashboard.innerHTML = `
+    <div class="dashboard-notice hidden" role="status"></div>
+    <div class="dashboard-top">
+      <div><p class="eyebrow">TEAM SCORE DASHBOARD</p><h1>${escapeHTML(team_name)}</h1><p>${members.length} competitors · ${summary.maximum} score entries</p></div>
+      <div class="dashboard-actions"><button class="button button-secondary button-small" id="refresh-dashboard">Refresh</button><button class="button button-secondary button-small" id="team-sign-out">Sign out</button></div>
+    </div>
+    <section class="progress-card">
+      <div class="progress-line"><span>Essay submission progress</span><span>${summary.submitted} / ${summary.maximum} Scores Submitted</span></div>
+      <div class="progress-track" role="progressbar" aria-valuenow="${summary.submitted}" aria-valuemin="0" aria-valuemax="${summary.maximum}"><div class="progress-fill" style="width:${summary.maximum ? summary.submitted / summary.maximum * 100 : 0}%"></div></div>
+      <div class="progress-caption">${complete ? "All team essays are submitted and locked." : summary.submitted === 0 ? "Not started" : "In progress · Submit an essay row at a time."}</div>
+    </section>
+    <div class="team-totals"><div><span>Team essay total</span><strong>${formatScore(summary.essayTotal)} <small>pts</small></strong></div><div><span>Team overall score</span><strong>${formatScore(summary.essayTotal + (extra_locked ? Number(extra_points || 0) : 0))} <small>pts</small></strong></div></div>
+    <section class="extra-card"><div><h2>Team Extra Points</h2><p>These points are added to your team’s final score. Once submitted, only an administrator can change them.</p><p class="extra-current">Current: ${extra_points === null ? "Not submitted" : `${formatScore(extra_points)} points`} · ${extra_locked ? "Submitted & locked" : extraInCorrection ? "Administrator correction" : "Not submitted"}</p></div>
+      <form class="extra-form" id="extra-form"><input aria-label="Team extra points" type="number" step="1" id="extra-points" ${extra_locked || extraInCorrection ? "disabled" : ""} value="${extra_points ?? ""}" placeholder="Points"><button class="button button-primary button-small" type="submit" ${extra_locked || extraInCorrection ? "disabled" : ""}>${extra_locked ? "Locked" : extraInCorrection ? "Awaiting admin" : "Submit & lock"}</button></form>
+    </section>
+    <section class="member-card team-essay-card"><div class="member-heading"><h2>Team essays</h2><span class="member-total">One row locks for every member</span></div>
+      <div class="essay-table-wrap" tabindex="0" role="region" aria-label="Team essay scores"><table class="essay-table team-essay-table"><thead><tr><th scope="col">Essay</th>${members.map(member => `<th scope="col">${escapeHTML(member.member_name)}</th>`).join("")}<th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+      <tbody>${essayNumbers.map(number => renderEssayRow(number, members)).join("")}</tbody></table></div>
+    </section>`;
+
+  dashboard.querySelector("#team-sign-out").onclick = signOut;
+  dashboard.querySelector("#refresh-dashboard").onclick = () => loadDashboard().catch(error => notice(error.message, "error"));
+  dashboard.querySelectorAll(".raw-score").forEach(select => {
+    select.addEventListener("change", () => {
+      const row = select.closest("tr");
+      try {
+        const points = competitionPoints(select.value);
+        select.closest(".grid-score-cell").querySelector(".points-output").textContent = points === null ? "—" : `${points} pts`;
+      } catch {
+        select.value = "";
+        select.closest(".grid-score-cell").querySelector(".points-output").textContent = "—";
+      }
+    });
+  });
+  dashboard.querySelectorAll(".row-save").forEach(button => button.addEventListener("click", async () => {
+    const row = button.closest("tr");
+    const essayNumber = Number(row.dataset.essayNumber);
+    const values = [...row.querySelectorAll(".raw-score")].map((select, index) => select.disabled ? team.members[index].essays.find(item => item.essay_number === essayNumber).raw_score : select.value);
+    if (values.some(value => value === "" || value === null)) return notice("Choose a score for every team member first.", "error");
+    if (!confirm(`Submit and lock Essay ${essayNumber} for the whole team? Locked scores cannot be changed by the team.`)) return;
+    button.disabled = true;
+    button.textContent = "Saving…";
+    try {
+      const {error} = await client.rpc("submit_team_essay", {p_essay_number: essayNumber, p_raw_scores: values.map(Number)});
+      if (error) throw error;
+      await loadDashboard();
+      notice(`Essay ${essayNumber} submitted and locked for the team.`);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Submit & lock";
+      notice(error.message || "The essay could not be saved. Please retry.", "error");
+    }
+  }));
+  dashboard.querySelector("#extra-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const input = dashboard.querySelector("#extra-points");
+    const value = input.value;
+    if (value === "" || !Number.isInteger(Number(value))) return notice("Enter a whole number for team extra points.", "error");
+    if (!confirm("Submit and lock these team extra points? Only an administrator can change them afterward.")) return;
+    const button = event.currentTarget.querySelector("button");
+    button.disabled = true;
+    button.textContent = "Saving…";
+    try {
+      const {error} = await client.rpc("submit_extra_points", {p_points: Number(value)});
+      if (error) throw error;
+      await loadDashboard();
+      notice("Team extra points submitted and locked.");
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = "Submit & lock";
+      notice(error.message || "Extra points could not be saved. Please retry.", "error");
+    }
+  });
+}
+
+if (auth) start();
