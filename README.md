@@ -62,7 +62,7 @@ The setup action can run only once. After success, remove `COMPETITION_BOOTSTRAP
 
 ## 3. Configure the browser and run locally
 
-Edit the two public settings at the top of `js/config.js`:
+Edit the two public settings at the top of `js/config.js`. Copy **Project URL** from Supabase settings, which looks like `https://your-project-ref.supabase.co`; do not append `/rest/v1/` because the application adds its API paths itself.
 
 ```js
 export const SUPABASE_URL = "https://YOUR_PROJECT_REF.supabase.co";

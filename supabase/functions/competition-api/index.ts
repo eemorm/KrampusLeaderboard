@@ -68,6 +68,7 @@ Deno.serve(async request=>{
     if(role==="team"){
       const {data:credentials,error}=await service.from("team_credentials").select("team_id,pin_salt,pin_hash,teams(team_name)");
       if(error)throw error;
+      if(!credentials?.length)return json({error:"Team PINs have not been initialized. Ask the competition administrator to complete setup."},503);
       for(const item of credentials??[]){
         if(await verifyPin(pin,item.pin_salt,item.pin_hash)){
           identity={id:item.team_id,salt:item.pin_salt,hash:item.pin_hash,teamName:(item.teams as {team_name:string}|null)?.team_name};break;
@@ -76,6 +77,7 @@ Deno.serve(async request=>{
     }else{
       const {data:item,error}=await service.from("admin_credentials").select("admin_id,pin_salt,pin_hash").eq("singleton",true).maybeSingle();
       if(error)throw error;
+      if(!item)return json({error:"The administrator PIN has not been initialized. Complete the one-time credential setup first."},503);
       if(item&&await verifyPin(pin,item.pin_salt,item.pin_hash))identity={id:item.admin_id,salt:item.pin_salt,hash:item.pin_hash};
     }
     if(!identity)return json({error:"That PIN could not be verified."},401);

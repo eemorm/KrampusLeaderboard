@@ -6,7 +6,11 @@ export function createPrivateClient(token) { return createClient(SUPABASE_URL, S
 export async function login(pin, role) {
   const response = await fetch(API_FUNCTION_URL, {method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON_KEY},body:JSON.stringify({action:"login",pin,role})});
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Could not sign in. Check the PIN and try again.");
+  if (!response.ok) {
+    if (response.status === 404) throw new Error("The Supabase PIN service is not deployed at this project URL yet.");
+    if (response.status >= 500) throw new Error(data.error || "The Supabase PIN service is unavailable. Check that its function and database setup are complete.");
+    throw new Error(data.error || "Could not sign in. Check the PIN and try again.");
+  }
   return data;
 }
 export function configurationMessage() { return "Supabase is not configured yet. Add the project URL and public anon key in js/config.js, then reload."; }

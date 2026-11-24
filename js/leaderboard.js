@@ -17,7 +17,7 @@ async function load() {
     outlet.innerHTML = `<div class="leaderboard-card"><div class="leaderboard-head"><span>Rank</span><span>Team</span><span>Overall score</span></div>${rows}</div>`;
     hasRendered=true;
     updated.textContent = `Updated ${new Intl.DateTimeFormat("en-US",{hour:"numeric",minute:"2-digit"}).format(new Date())}`;
-  } catch (error) { state("The competition database could not be reached. Please try again in a moment.", true); hasRendered=true; updated.textContent="Connection issue"; console.error(error); }
+  } catch (error) { state("The standings could not be loaded. Confirm the Supabase project URL and key are correct and that supabase/schema.sql has been run.", true); hasRendered=true; updated.textContent="Connection issue"; console.error(error); }
 }
 load();
 setInterval(load, 30000);

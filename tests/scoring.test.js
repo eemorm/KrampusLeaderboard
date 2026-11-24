@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {competitionPoints,summarizeTeam,rankTeams} from "../js/scoring.js";
+import {SUPABASE_URL,API_FUNCTION_URL} from "../js/config.js";
 
 test("converts every allowed raw essay score using the competition table",()=>{
   assert.deepEqual([0,1,2,3,4,5].map(competitionPoints),[0,0,9,13,15,18]);
@@ -33,4 +34,9 @@ test("matches the seven-team, 29-competitor, 435-essay structure",()=>{
   assert.equal(teamSizes.length,7);
   assert.equal(teamSizes.reduce((sum,size)=>sum+size,0),29);
   assert.equal(teamSizes.reduce((sum,size)=>sum+size*15,0),435);
+});
+
+test("keeps Supabase endpoints rooted at the project URL",()=>{
+  assert.equal(SUPABASE_URL.endsWith("/rest/v1"),false);
+  assert.equal(API_FUNCTION_URL,`${SUPABASE_URL}/functions/v1/competition-api`);
 });
