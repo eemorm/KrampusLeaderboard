@@ -8,8 +8,8 @@ const cors = {
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), {status, headers:{...cors,"Content-Type":"application/json"}});
 const env = (name: string) => Deno.env.get(name) ?? "";
 const supabaseUrl = env("SUPABASE_URL");
-const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
-const jwtSecret = env("SUPABASE_JWT_SECRET");
+const serviceKey = env("COMPETITION_SERVICE_ROLE_KEY");
+const jwtSecret = env("COMPETITION_JWT_SECRET");
 const service = createClient(supabaseUrl, serviceKey, {auth:{persistSession:false,autoRefreshToken:false}});
 
 function encodeBase64Url(bytes: Uint8Array): string {

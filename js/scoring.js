@@ -9,7 +9,7 @@ export function formatScore(value) {
   return new Intl.NumberFormat("en-US", {maximumFractionDigits: 2}).format(Number(value) || 0);
 }
 export function summarizeTeam(members, extraPoints = 0) {
-  const memberTotals = members.map(member => (member.essays || []).filter(essay => essay.is_locked).reduce((sum, essay) => sum + (essay.competition_points ?? 0), 0));
+  const memberTotals = members.map(member => (member.essays || []).filter(essay => essay.is_locked && !essay.is_dropped).reduce((sum, essay) => sum + (essay.competition_points ?? 0), 0));
   const essayTotal = memberTotals.reduce((sum, total) => sum + total, 0);
   const submitted = members.reduce((sum, member) => sum + (member.essays || []).filter(essay => essay.is_locked).length, 0);
   return {memberTotals, essayTotal, total: essayTotal + Number(extraPoints || 0), submitted, maximum: members.length * ESSAYS_PER_MEMBER};

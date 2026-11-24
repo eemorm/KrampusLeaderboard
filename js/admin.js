@@ -1,21 +1,236 @@
-import {isConfigured,configurationMessage,login,createPrivateClient} from "./supabase.js";
+import {isConfigured, configurationMessage, login, createPrivateClient} from "./supabase.js";
 import {formatScore} from "./scoring.js";
-import {readToken,storeToken,clearToken,escapeHTML,scoreOptions} from "./authentication.js";
-const loginPanel=document.querySelector("#admin-login"),dashboard=document.querySelector("#admin-dashboard"),form=document.querySelector("#admin-login-form"),errorBox=document.querySelector("#admin-login-error");
-let auth=readToken("admin"),client=null;
-form.addEventListener("submit",async event=>{event.preventDefault();errorBox.textContent="";const button=form.querySelector("button");button.disabled=true;button.textContent="Checking…";try{if(!isConfigured())throw new Error(configurationMessage());auth=await login(document.querySelector("#admin-pin").value,"admin");storeToken("admin",auth);await start();}catch(error){errorBox.textContent=error.message;}finally{button.disabled=false;button.innerHTML='Sign in <span aria-hidden="true">→</span>';}});
-async function start(){if(!auth)return;client=createPrivateClient(auth.token);loginPanel.classList.add("hidden");dashboard.classList.remove("hidden");dashboard.innerHTML='<div class="state-card"><span class="spinner"></span>Loading competition overview…</div>';try{await load();}catch(error){dashboard.innerHTML=`<div class="state-card error-state"><strong>Could not load administrator data.</strong>${escapeHTML(error.message)}<br><button class="button button-secondary button-small" id="admin-out">Sign in again</button></div>`;dashboard.querySelector("#admin-out").onclick=signOut;}}
-async function load(){const [{data:overview,error},{data:audit,auditError}]=await Promise.all([client.rpc("admin_overview"),client.rpc("admin_audit_log",{p_limit:30})]);if(error)throw error;if(auditError)throw auditError;render(overview,audit||[]);}
-function signOut(){clearToken("admin");auth=null;client=null;dashboard.classList.add("hidden");loginPanel.classList.remove("hidden");document.querySelector("#admin-pin").value="";}
-function render(teams,audit){dashboard.innerHTML=`<div class="admin-heading"><div><p class="eyebrow">PRIVATE WORKSPACE</p><h1 class="admin-title">Competition overview</h1><p class="admin-subtitle">Review submissions, make corrections, and keep a record of every change.</p></div><button class="button button-secondary button-small" id="admin-sign-out">Sign out</button></div><div class="dashboard-notice hidden" role="status"></div><div id="admin-teams">${teams.map(team=>`<section class="admin-team" data-team="${team.id}"><div class="admin-team-summary"><div class="admin-team-name">${escapeHTML(team.team_name)}</div><div class="admin-metric">Overall score<strong>${formatScore(team.overall_score)} pts</strong></div><div class="admin-metric">Essay progress<strong>${team.submitted_essays} / ${team.maximum_essays}</strong></div><div class="admin-metric">Extra points<strong>${team.extra_locked?"Locked":"Pending"} · ${team.extra_points===null?"—":formatScore(team.extra_points)}</strong></div><button class="admin-toggle" type="button" aria-expanded="false">View details +</button></div><div class="admin-team-detail hidden"><div class="admin-members">${team.members.map(member=>`<section class="admin-member" data-member="${member.id}"><h3>${escapeHTML(member.member_name)}<span>${formatScore(member.member_total)} pts</span></h3><table class="admin-essays"><tbody>${member.essays.map(essay=>`<tr data-essay="${essay.id}"><td>Essay ${essay.essay_number}</td><td class="essay-value">${essay.raw_score===null?"Pending":`${essay.raw_score}/6 · ${essay.competition_points} pts`}</td><td><div class="admin-essay-actions">${essay.is_locked?'<button class="button button-danger button-small admin-unlock" data-kind="essay">Unlock</button>':`<select class="admin-score-select" aria-label="Correct essay ${essay.essay_number} raw score">${scoreOptions(essay.raw_score)}</select><button class="button button-secondary button-small admin-save-score">Save</button><button class="button button-primary button-small admin-lock">Lock</button>`}</div></td></tr>`).join("")}</tbody></table></section>`).join("")}</div><div class="admin-extras"><span>Team extra points: <strong>${team.extra_points===null?"Not submitted":formatScore(team.extra_points)}</strong> · ${team.extra_locked?"Locked":"Unlocked"}</span><div class="admin-essay-actions">${team.extra_locked?'<button class="button button-danger button-small admin-unlock" data-kind="extra">Unlock extra points</button>':`<input class="admin-extra-value" type="number" step="1" value="${team.extra_points??""}" placeholder="Whole points" aria-label="Edit team extra points"><button class="button button-secondary button-small admin-save-extra">Save</button><button class="button button-primary button-small admin-lock-extra">Lock extra points</button>`}</div></div></div></section>`).join("")}</div><section class="admin-audit"><h2>Recent audit activity</h2><div class="audit-list">${audit.length?audit.map(item=>`<div class="audit-item"><strong>${escapeHTML(item.action)}</strong> · ${escapeHTML(item.team_name||"Competition")} · ${new Date(item.created_at).toLocaleString()}<br><span>${escapeHTML(JSON.stringify({previous:item.previous_value,next:item.new_value}))}</span></div>`).join(""):'No administrative changes have been recorded.'}</div></section>`;
-  dashboard.querySelector("#admin-sign-out").onclick=signOut;
-  dashboard.querySelectorAll(".admin-toggle").forEach(button=>button.addEventListener("click",()=>{const open=button.getAttribute("aria-expanded")==="true";button.setAttribute("aria-expanded",String(!open));button.closest(".admin-team").querySelector(".admin-team-detail").classList.toggle("hidden",open);button.textContent=open?"View details +":"Hide details −";}));
-  dashboard.querySelectorAll(".admin-unlock").forEach(button=>button.onclick=async()=>{const isExtra=button.dataset.kind==="extra",row=button.closest("tr");if(!confirm(isExtra?"Unlock team extra points for correction? This change will be recorded.":"Unlock this essay for correction? This change will be recorded."))return;await modify(isExtra?"admin_set_extra_lock":"admin_set_essay_lock",isExtra?{p_team_id:button.closest(".admin-team").dataset.team,p_locked:false}:{p_essay_id:row.dataset.essay,p_locked:false});});
-  dashboard.querySelectorAll(".admin-save-score").forEach(button=>button.onclick=async()=>{const row=button.closest("tr"),select=row.querySelector("select");if(select.value===""){notice("Choose a raw score before saving.","error");return;}if(!confirm("Save this corrected essay score? The change will be recorded in the audit log."))return;await modify("admin_set_essay_score",{p_essay_id:row.dataset.essay,p_raw_score:Number(select.value)});});
-  dashboard.querySelectorAll(".admin-lock").forEach(button=>button.onclick=async()=>{if(!confirm("Lock this essay now? The team will no longer be able to change it."))return;await modify("admin_set_essay_lock",{p_essay_id:button.closest("tr").dataset.essay,p_locked:true});});
-  dashboard.querySelectorAll(".admin-save-extra").forEach(button=>button.onclick=async()=>{const input=button.closest(".admin-extras").querySelector(".admin-extra-value"),value=Number(input.value);if(input.value===""||!Number.isInteger(value)){notice("Use a whole number for extra points.","error");return;}if(!confirm("Save this team extra-points value? The change will be recorded."))return;await modify("admin_set_extra_points",{p_team_id:button.closest(".admin-team").dataset.team,p_points:value});});
-  dashboard.querySelectorAll(".admin-lock-extra").forEach(button=>button.onclick=async()=>{if(!confirm("Lock these team extra points?"))return;await modify("admin_set_extra_lock",{p_team_id:button.closest(".admin-team").dataset.team,p_locked:true});});
+import {readToken, storeToken, clearToken, escapeHTML, scoreOptions} from "./authentication.js";
+
+const loginPanel = document.querySelector("#admin-login");
+const dashboard = document.querySelector("#admin-dashboard");
+const form = document.querySelector("#admin-login-form");
+const errorBox = document.querySelector("#admin-login-error");
+let auth = readToken("admin");
+let client = null;
+
+form.addEventListener("submit", async event => {
+  event.preventDefault();
+  errorBox.textContent = "";
+  const button = form.querySelector("button");
+  button.disabled = true;
+  button.textContent = "Checking…";
+  try {
+    if (!isConfigured()) throw new Error(configurationMessage());
+    auth = await login(document.querySelector("#admin-pin").value, "admin");
+    storeToken("admin", auth);
+    await start();
+  } catch (error) {
+    errorBox.textContent = error.message;
+  } finally {
+    button.disabled = false;
+    button.textContent = "Sign in";
+  }
+});
+
+async function start() {
+  if (!auth) return;
+  client = createPrivateClient(auth.token);
+  loginPanel.classList.add("hidden");
+  dashboard.classList.remove("hidden");
+  dashboard.innerHTML = '<div class="state-card"><span class="spinner" aria-hidden="true"></span>Loading scores…</div>';
+  try {
+    await load();
+  } catch (error) {
+    dashboard.innerHTML = `<div class="state-card error-state"><strong>Could not load scores.</strong>${escapeHTML(error.message)}<br><button class="button button-secondary button-small" id="admin-out">Sign in again</button></div>`;
+    dashboard.querySelector("#admin-out").onclick = signOut;
+  }
 }
-function notice(message,type="success"){const node=dashboard.querySelector(".dashboard-notice");node.textContent=message;node.className=`dashboard-notice ${type}`;}
-async function modify(rpc,args){try{const {error}=await client.rpc(rpc,args);if(error)throw error;await load();notice("Saved. The action was added to the audit log.");}catch(error){notice(error.message||"The change could not be saved.","error");}}
-if(auth)start();
+
+async function load() {
+  const [overview, audit] = await Promise.all([
+    client.rpc("admin_overview"),
+    client.rpc("admin_audit_log", {p_limit: 30})
+  ]);
+  if (overview.error) throw overview.error;
+  if (audit.error) throw audit.error;
+  render(overview.data, audit.data || []);
+}
+
+function signOut() {
+  clearToken("admin");
+  auth = null;
+  client = null;
+  dashboard.classList.add("hidden");
+  loginPanel.classList.remove("hidden");
+  document.querySelector("#admin-pin").value = "";
+}
+
+function render(teams, audit) {
+  dashboard.innerHTML = `
+    <header class="admin-heading">
+      <div>
+        <p class="eyebrow">ADMIN</p>
+        <h1 class="admin-title">Competition scores</h1>
+      </div>
+      <button class="button button-secondary button-small" id="admin-sign-out">Sign out</button>
+    </header>
+    <div class="dashboard-notice hidden" role="status"></div>
+    <div id="admin-teams">${teams.map(renderTeam).join("")}</div>
+    <section class="admin-audit">
+      <h2>Recent changes</h2>
+      <div class="audit-list">${audit.length ? audit.map(renderAudit).join("") : "No changes recorded."}</div>
+    </section>`;
+
+  dashboard.querySelector("#admin-sign-out").onclick = signOut;
+  dashboard.querySelectorAll(".admin-toggle").forEach(button => {
+    button.addEventListener("click", () => {
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!expanded));
+      button.closest(".admin-team").querySelector(".admin-team-detail").classList.toggle("hidden", expanded);
+      button.textContent = expanded ? "Show scores" : "Hide scores";
+    });
+  });
+  bindEssayActions();
+  bindExtraActions();
+}
+
+function renderTeam(team) {
+  const mayDropEssay = team.maximum_essays === 75;
+  const excludedByEssay = Object.fromEntries(team.members.flatMap(member => member.essays.filter(essay => essay.is_dropped).map(essay => [essay.essay_number, member.member_name])));
+  const excludedCount = Object.keys(excludedByEssay).length;
+  return `<section class="admin-team" data-team="${team.id}">
+    <div class="admin-team-summary">
+      <div class="admin-team-name">${escapeHTML(team.team_name)}</div>
+      <div class="admin-metric">Team score<strong>${formatScore(team.overall_score)} pts</strong></div>
+      <div class="admin-metric">Essays<strong>${team.submitted_essays} / ${team.maximum_essays}</strong></div>
+      <div class="admin-metric">Extra points<strong>${team.extra_locked ? "Locked" : "Pending"} · ${team.extra_points === null ? "—" : formatScore(team.extra_points)}</strong></div>
+      <button class="admin-toggle" type="button" aria-expanded="false">Show scores</button>
+    </div>
+    <div class="admin-team-detail hidden">
+      ${mayDropEssay ? `<p class="drop-rule">Choose one member’s score to exclude for each essay. ${excludedCount} / 15 selected.</p>` : ""}
+      <div class="admin-members">${team.members.map(member => renderMember(member, mayDropEssay, excludedByEssay)).join("")}</div>
+      ${renderExtras(team)}
+    </div>
+  </section>`;
+}
+
+function renderMember(member, mayDropEssay, excludedByEssay) {
+  return `<section class="admin-member" data-member="${member.id}">
+    <h3>${escapeHTML(member.member_name)}<span>${formatScore(member.member_total)} pts</span></h3>
+    <div class="admin-essays">${member.essays.map(essay => renderEssay(essay, mayDropEssay, excludedByEssay)).join("")}</div>
+  </section>`;
+}
+
+function renderEssay(essay, mayDropEssay, excludedByEssay) {
+  const value = essay.raw_score === null ? "Not submitted" : `${essay.raw_score}/6 · ${essay.competition_points} pts`;
+  const scoreEditor = `<select class="admin-score-select" aria-label="Essay ${essay.essay_number} raw score">${scoreOptions(essay.raw_score)}</select>
+    <button class="button button-secondary button-small admin-save-score" type="button">Save score</button>`;
+  const lockControl = essay.is_locked
+    ? '<button class="button button-secondary button-small admin-unlock" type="button">Unlock essay</button>'
+    : '<button class="button button-primary button-small admin-lock" type="button">Lock essay</button>';
+  const previousChoice = excludedByEssay[essay.essay_number];
+  const dropControl = mayDropEssay && essay.is_locked && essay.raw_score !== null
+    ? `<button class="button button-secondary button-small admin-drop-essay" type="button" data-dropped="${Boolean(essay.is_dropped)}" data-essay-number="${essay.essay_number}" data-previous-choice="${escapeHTML(previousChoice || "")}">${essay.is_dropped ? "Include in total" : previousChoice ? "Choose this member" : "Exclude score"}</button>`
+    : "";
+  return `<div class="admin-essay-row" data-essay="${essay.id}">
+    <div class="admin-essay-label">Essay ${essay.essay_number}</div>
+    <div class="admin-essay-value">${value}${essay.is_dropped ? '<span class="excluded-label">Excluded from total</span>' : ""}</div>
+    <div class="admin-essay-actions">${essay.is_locked ? "" : scoreEditor}${lockControl}${dropControl}</div>
+  </div>`;
+}
+
+function renderExtras(team) {
+  return `<div class="admin-extras">
+    <div>Team extra points: <strong>${team.extra_points === null ? "Not submitted" : formatScore(team.extra_points)}</strong> · ${team.extra_locked ? "Locked" : "Unlocked"}</div>
+    <div class="admin-essay-actions">${team.extra_locked
+      ? '<button class="button button-secondary button-small admin-unlock" data-kind="extra" type="button">Unlock extra points</button>'
+      : `<input class="admin-extra-value" type="number" step="1" value="${team.extra_points ?? ""}" placeholder="Whole points" aria-label="Edit team extra points">
+         <button class="button button-secondary button-small admin-save-extra" type="button">Save points</button>
+         <button class="button button-primary button-small admin-lock-extra" type="button">Lock points</button>`}
+    </div>
+  </div>`;
+}
+
+function renderAudit(item) {
+  const action = String(item.action || "change").replaceAll("_", " ");
+  return `<div class="audit-item"><strong>${escapeHTML(action)}</strong> · ${escapeHTML(item.team_name || "Competition")} · ${new Date(item.created_at).toLocaleString()}<br><span>${escapeHTML(JSON.stringify({previous: item.previous_value, next: item.new_value}))}</span></div>`;
+}
+
+function bindEssayActions() {
+  dashboard.querySelectorAll(".admin-unlock[data-kind!=extra]").forEach(button => {
+    button.onclick = async () => {
+      const row = button.closest(".admin-essay-row");
+      if (!confirm("Unlock this essay so its score can be corrected? This action will be recorded.")) return;
+      await modify("admin_set_essay_lock", {p_essay_id: row.dataset.essay, p_locked: false});
+    };
+  });
+  dashboard.querySelectorAll(".admin-save-score").forEach(button => {
+    button.onclick = async () => {
+      const row = button.closest(".admin-essay-row");
+      const value = row.querySelector(".admin-score-select").value;
+      if (value === "") return notice("Choose a score first.", "error");
+      if (!confirm("Save this score? The change will be recorded.")) return;
+      await modify("admin_set_essay_score", {p_essay_id: row.dataset.essay, p_raw_score: Number(value)});
+    };
+  });
+  dashboard.querySelectorAll(".admin-lock").forEach(button => {
+    button.onclick = async () => {
+      if (!confirm("Lock this essay? Teams cannot change a locked essay.")) return;
+      await modify("admin_set_essay_lock", {p_essay_id: button.closest(".admin-essay-row").dataset.essay, p_locked: true});
+    };
+  });
+  dashboard.querySelectorAll(".admin-drop-essay").forEach(button => {
+    button.onclick = async () => {
+      const dropped = button.dataset.dropped === "true";
+      const prompt = dropped
+        ? `Restore this member’s Essay ${button.dataset.essayNumber} score to the team total? This change will be recorded.`
+        : button.dataset.previousChoice
+          ? `Choose this member instead of ${button.dataset.previousChoice} for Essay ${button.dataset.essayNumber}? The previous selection will be replaced and both changes recorded.`
+          : `Exclude this member’s Essay ${button.dataset.essayNumber} score from the team total? This change will be recorded.`;
+      if (!confirm(prompt)) return;
+      await modify("admin_set_essay_dropped", {
+        p_essay_id: button.closest(".admin-essay-row").dataset.essay,
+        p_dropped: !dropped
+      });
+    };
+  });
+}
+
+function bindExtraActions() {
+  dashboard.querySelectorAll(".admin-unlock[data-kind=extra]").forEach(button => {
+    button.onclick = async () => {
+      if (!confirm("Unlock team extra points for correction? This action will be recorded.")) return;
+      await modify("admin_set_extra_lock", {p_team_id: button.closest(".admin-team").dataset.team, p_locked: false});
+    };
+  });
+  dashboard.querySelectorAll(".admin-save-extra").forEach(button => {
+    button.onclick = async () => {
+      const input = button.closest(".admin-extras").querySelector(".admin-extra-value");
+      const value = Number(input.value);
+      if (input.value === "" || !Number.isInteger(value)) return notice("Enter a whole number.", "error");
+      if (!confirm("Save these team extra points? The change will be recorded.")) return;
+      await modify("admin_set_extra_points", {p_team_id: button.closest(".admin-team").dataset.team, p_points: value});
+    };
+  });
+  dashboard.querySelectorAll(".admin-lock-extra").forEach(button => {
+    button.onclick = async () => {
+      if (!confirm("Lock these team extra points?")) return;
+      await modify("admin_set_extra_lock", {p_team_id: button.closest(".admin-team").dataset.team, p_locked: true});
+    };
+  });
+}
+
+function notice(message, type = "success") {
+  const node = dashboard.querySelector(".dashboard-notice");
+  node.textContent = message;
+  node.className = `dashboard-notice ${type}`;
+}
+
+async function modify(rpc, args) {
+  try {
+    const {error} = await client.rpc(rpc, args);
+    if (error) throw error;
+    await load();
+    notice("Saved and recorded.");
+  } catch (error) {
+    notice(error.message || "The change could not be saved.", "error");
+  }
+}
+
+if (auth) start();

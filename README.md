@@ -28,7 +28,7 @@ This JWT approach needs the Supabase project’s legacy HS256 JWT signing secret
 
 1. Create a Supabase project at [supabase.com](https://supabase.com/). Save the database password in a password manager.
 2. In **Project Settings → API**, copy the Project URL and publishable key (or legacy anon key). Never copy the `service_role` key into this repository.
-3. Open **SQL Editor → New query**, paste all of `supabase/schema.sql`, and run it. The script creates seven placeholder teams, 29 placeholder members (Team 7 has five), 435 essay rows, and one extra-points row per team. It also installs the scoring constraints, private functions, RLS policies, and the public-only leaderboard view.
+3. Open **SQL Editor → New query**, paste all of `supabase/schema.sql`, and run it. The script creates seven placeholder teams, 29 placeholder members (Team 7 has five), 435 essay rows, and one extra-points row per team. It also installs the scoring constraints, private functions, RLS policies, and the public-only leaderboard view. If the project already has the earlier schema installed, run the updated script again; it adds the essay-exclusion field and updates the scoring functions without removing submissions.
 4. In **Project Settings → API → JWT Settings**, ensure the project supports HS256 tokens using its legacy JWT secret. Copy that secret only for the next Edge Function secret setup.
 5. Install the [Supabase CLI](https://supabase.com/docs/guides/cli), sign in with `supabase login`, then link this folder to the project with `supabase link --project-ref YOUR_PROJECT_REF`.
 6. Set the Edge Function secrets. Get the service-role key from the Supabase API settings and create a long random one-time bootstrap secret (at least 32 random characters). Put them in the ignored local file `supabase/functions/.env` (create the file; it is excluded by `.gitignore`), then push them to Supabase from that file:
@@ -38,7 +38,7 @@ This JWT approach needs the Supabase project’s legacy HS256 JWT signing secret
    supabase secrets set --env-file supabase/functions/.env
    ```
 
-   The file should contain `SUPABASE_SERVICE_ROLE_KEY=...`, `SUPABASE_JWT_SECRET=...`, and `COMPETITION_BOOTSTRAP_SECRET=...`, one per line. Supabase supplies `SUPABASE_URL` to deployed Edge Functions. Never expose the service key in `js/config.js`; remove the local secret file when setup is complete.
+   The file should contain `COMPETITION_SERVICE_ROLE_KEY=...`, `COMPETITION_JWT_SECRET=...`, and `COMPETITION_BOOTSTRAP_SECRET=...`, one per line. Supabase supplies `SUPABASE_URL` to deployed Edge Functions. Never expose the service key in `js/config.js`; remove the local secret file when setup is complete.
 
 ## 2. Deploy the authentication function and initialize PINs
 
@@ -106,6 +106,8 @@ Raw score conversion is centralized in `js/scoring.js` and mirrored by a stored 
 | 5 | 18 |
 
 The database rejects scores outside 0–5. A team can submit each essay once; the submit RPC verifies its team from the signed token, recalculates points in Postgres, and locks the essay atomically. Extra points are whole numbers, including negative values and zero, and are included in the public total after they are locked. Admins must unlock before editing and lock after corrections. Individual member totals remain inside the authenticated team/admin dashboard and are never in the public view.
+
+For the five-person team, an administrator chooses one member’s score to exclude for each of the 15 essay numbers. The admin dashboard shows how many of the 15 selections have been made. Choosing a different member replaces the previous choice for that essay, and both changes are recorded in the audit log. Excluded scores still count as submitted for progress reporting; the public leaderboard shows only the resulting team total.
 
 ## Administrator access
 
