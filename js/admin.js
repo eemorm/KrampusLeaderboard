@@ -153,7 +153,7 @@ function renderAudit(item) {
 }
 
 function bindEssayActions() {
-  dashboard.querySelectorAll(".admin-unlock[data-kind!=extra]").forEach(button => {
+  dashboard.querySelectorAll(".admin-unlock:not([data-kind='extra'])").forEach(button => {
     button.onclick = async () => {
       const row = button.closest(".admin-essay-row");
       if (!confirm("Unlock this essay so its score can be corrected? This action will be recorded.")) return;
