@@ -242,7 +242,7 @@ end $$;
 
 create or replace function public.admin_set_team_essay_scores(p_team_id uuid,p_essay_number integer,p_raw_scores integer[]) returns void
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare v_member_count integer; item record; v_score integer; old_row jsonb; new_row jsonb;
+declare v_member_count integer; item record; v_score integer; old_row jsonb; new_row jsonb; v_changes integer:=0; v_cleared boolean:=false;
 begin
   if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
   if p_essay_number is null or p_essay_number not between 1 and 15 then raise exception 'Essay number must be 1 through 15'; end if;
@@ -257,15 +257,40 @@ begin
     order by m.member_number for update of e
   loop
     v_score:=p_raw_scores[item.member_number];
-    if v_score is null or v_score not between 0 and 5 then raise exception 'Every member score must be 0 through 5'; end if;
+    if v_score is not null and v_score not between 0 and 5 then raise exception 'Every selected score must be 0 through 5'; end if;
     if item.raw_score is distinct from v_score then
       old_row:=jsonb_build_object('raw_score',item.raw_score,'competition_points',item.competition_points,'is_locked',item.is_locked,'is_dropped',item.is_dropped);
-      update public.essays set raw_score=v_score,updated_at=now() where id=item.id;
+      -- An admin can clear an erroneous score by choosing the blank option.
+      -- That score becomes available for team resubmission; other cells retain
+      -- their own lock state and are still protected by submit_team_essay.
+      update public.essays set raw_score=v_score,
+        is_locked=case when v_score is null then false else is_locked end,
+        submitted_at=case when v_score is null then null else submitted_at end,
+        updated_at=now() where id=item.id;
+      if v_score is null then v_cleared:=true; end if;
       select jsonb_build_object('raw_score',raw_score,'competition_points',competition_points,'is_locked',is_locked,'is_dropped',is_dropped)
         into new_row from public.essays where id=item.id;
-      perform public.admin_write_audit('essay_score_corrected',p_team_id,item.id,item.member_id,old_row,new_row);
+      perform public.admin_write_audit(case when v_score is null then 'essay_score_cleared_for_resubmission' else 'essay_score_corrected' end,p_team_id,item.id,item.member_id,old_row,new_row);
+      v_changes:=v_changes+1;
     end if;
   end loop;
+  if v_changes=0 then raise exception 'No score changes to save'; end if;
+  -- Clearing a cell is an explicit admin decision to return this essay row to
+  -- the team. Lock any other previously unlocked, populated cells so only the
+  -- cleared/missing scores need team submission and the row cannot deadlock.
+  if v_cleared then
+    for item in
+      select m.id as member_id,e.id,e.raw_score,e.competition_points,e.is_locked,e.is_dropped
+      from public.members m join public.essays e on e.member_id=m.id
+      where m.team_id=p_team_id and e.essay_number=p_essay_number and e.raw_score is not null and not e.is_locked
+      order by m.member_number for update of e
+    loop
+      old_row:=jsonb_build_object('raw_score',item.raw_score,'competition_points',item.competition_points,'is_locked',false,'is_dropped',item.is_dropped);
+      update public.essays set is_locked=true,submitted_at=coalesce(submitted_at,now()),updated_at=now() where id=item.id;
+      new_row:=jsonb_build_object('raw_score',item.raw_score,'competition_points',item.competition_points,'is_locked',true,'is_dropped',item.is_dropped);
+      perform public.admin_write_audit('essay_locked',p_team_id,item.id,item.member_id,old_row,new_row);
+    end loop;
+  end if;
 end $$;
 
 create or replace function public.admin_set_essay_score(p_essay_id uuid,p_raw_score integer) returns void

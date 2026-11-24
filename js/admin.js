@@ -105,13 +105,14 @@ function renderEssayRow(team, essayNumber, mayDropEssay, excludedEssay) {
   const essays = team.members.map(member => member.essays.find(essay => essay.essay_number === essayNumber));
   const lockedCount = essays.filter(essay => essay.is_locked).length;
   const fullyLocked = lockedCount === essays.length;
+  const missingCount = essays.filter(essay => essay.raw_score === null).length;
   const status = fullyLocked ? "Locked" : lockedCount ? `Partially locked · ${lockedCount}/${essays.length}` : "Unlocked";
   const scores = essays.map((essay, index) => `<td><div class="admin-grid-score"><select class="admin-score-select" data-member-number="${index + 1}" data-current-score="${essay.raw_score ?? ""}" aria-label="${escapeHTML(team.members[index].member_name)} essay ${essayNumber} score">${scoreOptions(essay.raw_score)}</select><span class="admin-points">${essay.competition_points === null ? "—" : `${essay.competition_points} pts`}</span></div></td>`).join("");
   const exclusion = mayDropEssay
     ? `<td><div class="admin-exclusion"><select class="admin-drop-choice" aria-label="Member excluded for essay ${essayNumber}" ${fullyLocked ? "" : "disabled"}><option value="">Choose member</option>${essays.map((essay, index) => `<option value="${essay.id}" ${essay.is_dropped ? "selected" : ""}>${escapeHTML(team.members[index].member_name)}</option>`).join("")}</select><button class="button button-secondary button-small admin-save-drop" type="button" data-current-drop="${excludedEssay?.id || ""}" ${fullyLocked ? "" : "disabled"}>Save choice</button></div></td>`
     : "";
   const lockText = fullyLocked ? "Unlock essay" : lockedCount ? "Lock all" : "Lock essay";
-  return `<tr class="admin-grid-row" data-essay-number="${essayNumber}" data-team="${team.id}" data-locked="${fullyLocked}" data-locked-count="${lockedCount}" data-member-count="${essays.length}" data-essay-ids="${essays.map(essay => essay.id).join(",")}"><th scope="row">Essay ${essayNumber}</th>${scores}${exclusion}<td><span class="status-pill ${fullyLocked ? "locked" : ""}">${status}</span></td><td><div class="admin-row-actions"><button class="button button-secondary button-small admin-save-row" type="button">Save scores</button><button class="button ${fullyLocked ? "button-secondary" : "button-primary"} button-small admin-group-lock" type="button" data-lock="${!fullyLocked}">${lockText}</button></div></td></tr>`;
+  return `<tr class="admin-grid-row" data-essay-number="${essayNumber}" data-team="${team.id}" data-locked="${fullyLocked}" data-locked-count="${lockedCount}" data-member-count="${essays.length}" data-missing-count="${missingCount}" data-essay-ids="${essays.map(essay => essay.id).join(",")}"><th scope="row">Essay ${essayNumber}</th>${scores}${exclusion}<td><span class="status-pill ${fullyLocked ? "locked" : ""}">${status}</span></td><td><div class="admin-row-actions"><button class="button button-secondary button-small admin-save-row" type="button">Save scores</button><button class="button ${fullyLocked ? "button-secondary" : "button-primary"} button-small admin-group-lock" type="button" data-lock="${!fullyLocked}" ${!fullyLocked && missingCount ? "disabled title=\"Enter every member score before locking\"" : ""}>${lockText}</button></div></td></tr>`;
 }
 
 function renderExtras(team) {
@@ -135,19 +136,24 @@ function bindEssayActions() {
   dashboard.querySelectorAll(".admin-save-row").forEach(button => {
     button.onclick = async () => {
       const row = button.closest(".admin-grid-row");
-      const values = [...row.querySelectorAll(".admin-score-select")].map(select => select.value);
-      if (values.some(value => value === "")) return notice("Choose a score for every member first.", "error");
+      const selects = [...row.querySelectorAll(".admin-score-select")];
+      const changed = selects.filter(select => select.value !== select.dataset.currentScore);
+      if (!changed.length) return notice("No score changes to save. Choose a score, or choose the blank option to clear an existing score for team resubmission.", "error");
+      const cleared = changed.filter(select => select.value === "");
+      const memberNames = cleared.map(select => select.closest("td").querySelector("select").getAttribute("aria-label").replace(/ essay \d+ score$/, ""));
       const confirmation = row.dataset.locked === "true"
-        ? `Save score corrections for Essay ${row.dataset.essayNumber}? Its lock will remain in place.`
-        : `Save scores for Essay ${row.dataset.essayNumber}? The row will remain unlocked.`;
-      if (!confirm(`${confirmation} The change will be recorded.`)) return;
-      await modify("admin_set_team_essay_scores", {p_team_id: row.dataset.team, p_essay_number: Number(row.dataset.essayNumber), p_raw_scores: values.map(Number)});
+        ? `Save score corrections for Essay ${row.dataset.essayNumber}? Existing locks will remain in place.`
+        : `Save score changes for Essay ${row.dataset.essayNumber}? Existing locks will remain in place.`;
+      const clearMessage = cleared.length ? ` Choosing the blank option will clear ${memberNames.join(", ")} and unlock that score for team resubmission. Other populated scores in this row will be locked.` : "";
+      if (!confirm(`${confirmation}${clearMessage} The change will be recorded.`)) return;
+      await modify("admin_set_team_essay_scores", {p_team_id: row.dataset.team, p_essay_number: Number(row.dataset.essayNumber), p_raw_scores: selects.map(select => select.value === "" ? null : Number(select.value))});
     };
   });
   dashboard.querySelectorAll(".admin-group-lock").forEach(button => {
     button.onclick = async () => {
       const row = button.closest(".admin-grid-row");
       const lock = button.dataset.lock === "true";
+      if (lock && Number(row.dataset.missingCount)) return notice("Choose or clear the missing scores before locking this essay.", "error");
       if (!confirm(`${lock ? "Lock all member scores" : "Unlock all member scores"} for Essay ${row.dataset.essayNumber}? This change will be recorded.`)) return;
       await modify("admin_set_team_essay_lock", {p_team_id: row.dataset.team, p_essay_number: Number(row.dataset.essayNumber), p_locked: lock});
     };

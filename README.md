@@ -28,7 +28,7 @@ This JWT approach needs the Supabase project’s legacy HS256 JWT signing secret
 
 1. Create a Supabase project at [supabase.com](https://supabase.com/). Save the database password in a password manager.
 2. In **Project Settings → API**, copy the Project URL and publishable key (or legacy anon key). Never copy the `service_role` key into this repository.
-3. Open **SQL Editor → New query**, paste all of `supabase/schema.sql`, and run it. The script creates seven placeholder teams, 29 placeholder members (Team 7 has five), 435 essay rows, and one extra-points row per team. It also installs the scoring constraints, private functions, RLS policies, and the public-only leaderboard view. If the project already has the earlier schema installed, run the updated script again; it adds the essay-exclusion field and updates the scoring functions without removing submissions.
+3. Open **SQL Editor → New query**, paste all of `supabase/schema.sql`, and run it. The script creates seven placeholder teams, 29 placeholder members (Team 7 has five), 435 essay rows, and one extra-points row per team. It also installs the scoring constraints, private functions, RLS policies, and the public-only leaderboard view. If the project already has this app installed, run the updated script again after pulling code changes; it safely replaces the functions and policies without removing submissions. The current administrator score correction supports clearing a bad score so the team can resubmit it.
 4. In **Project Settings → API → JWT Settings**, ensure the project supports HS256 tokens using its legacy JWT secret. Copy that secret only for the next Edge Function secret setup.
 5. Install the [Supabase CLI](https://supabase.com/docs/guides/cli), sign in with `supabase login`, then link this folder to the project with `supabase link --project-ref YOUR_PROJECT_REF`.
 6. Set the Edge Function secrets. Get the service-role key from the Supabase API settings and create a long random one-time bootstrap secret (at least 32 random characters). Put them in the ignored local file `supabase/functions/.env` (create the file; it is excluded by `.gitignore`), then push them to Supabase from that file:
@@ -87,8 +87,9 @@ The one-time bootstrap script maps PINs by the current team names. If you rename
 
 1. Push this project to a GitHub repository and make sure `main` is the deployment branch (or adjust `.github/workflows/deploy.yml`).
 2. In **Settings → Pages**, select **GitHub Actions** as the build and deployment source.
-3. Push to `main`. The workflow publishes the static files; relative links and module paths work for a project subpath.
-4. Add the published site origin to Supabase **Authentication → URL Configuration → Site URL / Redirect URLs** if required by your project settings. The app does not use Supabase’s hosted sign-in redirect flow, but the site origin should still be registered for project consistency.
+3. Push to `main`. The workflow runs `npm test` and JavaScript syntax checks, packages only the three HTML pages plus `css/` and `js/`, then deploys that artifact. Relative links and module paths work for a project subpath. Pull requests to `main` run the checks without deploying.
+4. In the repository’s **Actions** tab, open **Build and deploy to GitHub Pages** to see the exact failed step if a run is red. Confirm the workflow file exists on `main`, the repository’s default branch is `main`, and **Settings → Pages → Build and deployment → Source** is set to **GitHub Actions**. The first deployment may need that Pages source setting before the workflow can publish.
+5. Add the published site origin to Supabase **Authentication → URL Configuration → Site URL / Redirect URLs** if required by your project settings. The app does not use Supabase’s hosted sign-in redirect flow, but the site origin should still be registered for project consistency.
 
 The browser’s publishable/anon key is intentionally public. Keep RLS and the exact `public_leaderboard` projection in place. Never put private values in GitHub Pages secrets expecting static JavaScript to hide them; anything delivered to a browser can be read by visitors.
 
@@ -111,7 +112,7 @@ For the five-person team, an administrator chooses one member’s score to exclu
 
 ## Administrator access
 
-Open the discreet **Administrator** link in the site header and enter the separate administrator PIN. The dashboard shows each team’s total, progress, extra points, member totals, essay scores, and pending essays. Unlock, correction, and re-lock actions require confirmation and create audit records with the administrator identity, affected team/essay/member, previous and new values, and timestamp.
+Open the discreet **Administrator** link in the site header and enter the separate administrator PIN. The dashboard shows each team’s total, progress, extra points, member totals, essay scores, and pending essays. To clear a mistaken score, choose **Choose…** in that member’s score cell and click **Save scores**. After confirmation, the database clears and unlocks that score for team resubmission; other already-entered scores in the row are locked and audited. The team dashboard then offers the row for resubmission. Selecting a numeric score saves a correction while preserving its lock state. Group lock/unlock, correction, and re-submission actions require confirmation and create audit records with the administrator identity, affected team/essay/member, previous and new values, and timestamp.
 
 ## Backups and maintenance
 
