@@ -188,16 +188,16 @@ end $$;
 
 create or replace function public.admin_set_essay_score(p_essay_id uuid,p_raw_score integer) returns void
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare v_team uuid; v_member uuid; v_locked boolean; old_row jsonb; new_row jsonb;
+declare v_team uuid; v_member uuid; old_row jsonb; new_row jsonb;
 begin
   if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
   if p_raw_score is null or p_raw_score not between 0 and 5 then raise exception 'Raw score must be 0 through 5'; end if;
-  select m.team_id,e.member_id,e.is_locked,jsonb_build_object('raw_score',e.raw_score,'competition_points',e.competition_points,'is_locked',e.is_locked)
-    into v_team,v_member,v_locked,old_row from public.essays e join public.members m on m.id=e.member_id where e.id=p_essay_id for update of e;
+  select m.team_id,e.member_id,jsonb_build_object('raw_score',e.raw_score,'competition_points',e.competition_points,'is_locked',e.is_locked,'is_dropped',e.is_dropped)
+    into v_team,v_member,old_row from public.essays e join public.members m on m.id=e.member_id where e.id=p_essay_id for update of e;
   if v_team is null then raise exception 'Essay not found'; end if;
-  if v_locked then raise exception 'Unlock essay before editing'; end if;
+  -- Admins can correct a locked score directly; updating raw_score preserves its lock state.
   update public.essays set raw_score=p_raw_score,updated_at=now() where id=p_essay_id;
-  select jsonb_build_object('raw_score',raw_score,'competition_points',competition_points,'is_locked',is_locked) into new_row from public.essays where id=p_essay_id;
+  select jsonb_build_object('raw_score',raw_score,'competition_points',competition_points,'is_locked',is_locked,'is_dropped',is_dropped) into new_row from public.essays where id=p_essay_id;
   perform public.admin_write_audit('essay_score_corrected',v_team,p_essay_id,v_member,old_row,new_row);
 end $$;
 

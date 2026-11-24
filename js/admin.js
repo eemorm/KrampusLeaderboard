@@ -120,7 +120,7 @@ function renderMember(member, mayDropEssay, excludedByEssay) {
 function renderEssay(essay, mayDropEssay, excludedByEssay) {
   const value = essay.raw_score === null ? "Not submitted" : `${essay.raw_score}/6 · ${essay.competition_points} pts`;
   const scoreEditor = `<select class="admin-score-select" aria-label="Essay ${essay.essay_number} raw score">${scoreOptions(essay.raw_score)}</select>
-    <button class="button button-secondary button-small admin-save-score" type="button">Save score</button>`;
+    <button class="button button-secondary button-small admin-save-score" type="button" disabled>${essay.is_locked ? "Save correction" : "Save score"}</button>`;
   const lockControl = essay.is_locked
     ? '<button class="button button-secondary button-small admin-unlock" type="button">Unlock essay</button>'
     : '<button class="button button-primary button-small admin-lock" type="button">Lock essay</button>';
@@ -128,10 +128,10 @@ function renderEssay(essay, mayDropEssay, excludedByEssay) {
   const dropControl = mayDropEssay && essay.is_locked && essay.raw_score !== null
     ? `<button class="button button-secondary button-small admin-drop-essay" type="button" data-dropped="${Boolean(essay.is_dropped)}" data-essay-number="${essay.essay_number}" data-previous-choice="${escapeHTML(previousChoice || "")}">${essay.is_dropped ? "Include in total" : previousChoice ? "Choose this member" : "Exclude score"}</button>`
     : "";
-  return `<div class="admin-essay-row" data-essay="${essay.id}">
+  return `<div class="admin-essay-row" data-essay="${essay.id}" data-current-score="${essay.raw_score ?? ""}" data-locked="${Boolean(essay.is_locked)}">
     <div class="admin-essay-label">Essay ${essay.essay_number}</div>
     <div class="admin-essay-value">${value}${essay.is_dropped ? '<span class="excluded-label">Excluded from total</span>' : ""}</div>
-    <div class="admin-essay-actions">${essay.is_locked ? "" : scoreEditor}${lockControl}${dropControl}</div>
+    <div class="admin-essay-actions">${scoreEditor}${lockControl}${dropControl}</div>
   </div>`;
 }
 
@@ -153,6 +153,13 @@ function renderAudit(item) {
 }
 
 function bindEssayActions() {
+  dashboard.querySelectorAll(".admin-score-select").forEach(select => {
+    select.addEventListener("change", () => {
+      const row = select.closest(".admin-essay-row");
+      const save = row.querySelector(".admin-save-score");
+      save.disabled = select.value === "" || select.value === row.dataset.currentScore;
+    });
+  });
   dashboard.querySelectorAll(".admin-unlock:not([data-kind='extra'])").forEach(button => {
     button.onclick = async () => {
       const row = button.closest(".admin-essay-row");
@@ -165,7 +172,10 @@ function bindEssayActions() {
       const row = button.closest(".admin-essay-row");
       const value = row.querySelector(".admin-score-select").value;
       if (value === "") return notice("Choose a score first.", "error");
-      if (!confirm("Save this score? The change will be recorded.")) return;
+      const confirmation = row.dataset.locked === "true"
+        ? "Save this score correction? The essay will remain locked and the change will be recorded."
+        : "Save this score? The essay will remain unlocked until you lock it. The change will be recorded.";
+      if (!confirm(confirmation)) return;
       await modify("admin_set_essay_score", {p_essay_id: row.dataset.essay, p_raw_score: Number(value)});
     };
   });
