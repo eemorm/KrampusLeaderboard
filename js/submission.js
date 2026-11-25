@@ -8,6 +8,7 @@ const dashboard = document.querySelector("#team-dashboard");
 const form = document.querySelector("#team-login-form");
 const errorBox = document.querySelector("#login-error");
 let auth = readToken("team");
+const existingAdminAuth = readToken("admin");
 let client = null;
 let team = null;
 
@@ -33,9 +34,19 @@ form.addEventListener("submit", async event => {
   button.textContent = "Checking…";
   try {
     if (!isConfigured()) throw new Error(configurationMessage());
-    auth = await login(new FormData(form).get("pin"), "team");
-    storeToken("team", auth);
-    await start();
+    const pin = new FormData(form).get("pin");
+    try {
+      auth = await login(pin, "team");
+      clearToken("admin");
+      storeToken("team", auth);
+      await start();
+    } catch (teamError) {
+      if (teamError.status !== 401) throw teamError;
+      const adminAuth = await login(pin, "admin");
+      clearToken("team");
+      storeToken("admin", adminAuth);
+      window.location.replace("admin.html");
+    }
   } catch (error) {
     showError(error.message);
   } finally {
@@ -191,4 +202,5 @@ function render() {
   });
 }
 
-if (auth) start();
+if (existingAdminAuth) window.location.replace("admin.html");
+else if (auth) start();

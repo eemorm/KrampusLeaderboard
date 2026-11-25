@@ -7,9 +7,12 @@ export async function login(pin, role) {
   const response = await fetch(API_FUNCTION_URL, {method:"POST",headers:{"Content-Type":"application/json","apikey":SUPABASE_ANON_KEY},body:JSON.stringify({action:"login",pin,role})});
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    if (response.status === 404) throw new Error("The Supabase PIN service is not deployed at this project URL yet.");
-    if (response.status >= 500) throw new Error(data.error || "The Supabase PIN service is unavailable. Check that its function and database setup are complete.");
-    throw new Error(data.error || "Could not sign in. Check the PIN and try again.");
+    const message = response.status === 404
+      ? "The Supabase PIN service is not deployed at this project URL yet."
+      : response.status >= 500
+        ? data.error || "The Supabase PIN service is unavailable. Check that its function and database setup are complete."
+        : data.error || "Could not sign in. Check the PIN and try again.";
+    throw Object.assign(new Error(message), {status: response.status});
   }
   return data;
 }

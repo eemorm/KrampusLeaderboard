@@ -1,38 +1,18 @@
-import {isConfigured, configurationMessage, login, createPrivateClient} from "./supabase.js";
+import {createPrivateClient} from "./supabase.js";
 import {formatScore} from "./scoring.js";
-import {readToken, storeToken, clearToken, escapeHTML, scoreOptions} from "./authentication.js";
+import {readToken, clearToken, escapeHTML, scoreOptions} from "./authentication.js";
 import {loadTeamConfig, getTeamById, mapMembers} from "./team-config.js";
 
-const loginPanel = document.querySelector("#admin-login");
 const dashboard = document.querySelector("#admin-dashboard");
-const form = document.querySelector("#admin-login-form");
-const errorBox = document.querySelector("#admin-login-error");
-let auth = readToken("admin");
+const auth = readToken("admin");
 let client = null;
 
-form.addEventListener("submit", async event => {
-  event.preventDefault();
-  errorBox.textContent = "";
-  const button = form.querySelector("button");
-  button.disabled = true;
-  button.textContent = "Checking…";
-  try {
-    if (!isConfigured()) throw new Error(configurationMessage());
-    auth = await login(document.querySelector("#admin-pin").value, "admin");
-    storeToken("admin", auth);
-    await start();
-  } catch (error) {
-    errorBox.textContent = error.message;
-  } finally {
-    button.disabled = false;
-    button.textContent = "Sign in";
-  }
-});
-
 async function start() {
-  if (!auth) return;
+  if (!auth) {
+    window.location.replace("submit.html");
+    return;
+  }
   client = createPrivateClient(auth.token);
-  loginPanel.classList.add("hidden");
   dashboard.classList.remove("hidden");
   dashboard.innerHTML = '<div class="state-card"><span class="spinner" aria-hidden="true"></span>Loading scores…</div>';
   try {
@@ -61,11 +41,7 @@ async function load() {
 
 function signOut() {
   clearToken("admin");
-  auth = null;
-  client = null;
-  dashboard.classList.add("hidden");
-  loginPanel.classList.remove("hidden");
-  document.querySelector("#admin-pin").value = "";
+  window.location.replace("submit.html");
 }
 
 function render(teams, audit) {
@@ -226,4 +202,4 @@ async function modify(rpc, args) {
   }
 }
 
-if (auth) start();
+start();
