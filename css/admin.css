@@ -4,7 +4,7 @@
 .admin-heading .eyebrow { margin: 0; }
 .admin-title { font-size: 29px; }
 .admin-subtitle { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.admin-team { margin-bottom: 12px; border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 6px; background: var(--surface); }
+.admin-team { margin-bottom: 12px; border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 6px; background: var(--surface); }
 .admin-team-summary { display: grid; grid-template-columns: minmax(130px, 1fr) 130px 140px 150px auto; align-items: center; gap: 14px; padding: 14px 16px; }
 .admin-team-name { font-size: 13px; font-weight: 700; }
 .admin-metric { color: var(--muted); font-size: 10px; line-height: 1.5; }

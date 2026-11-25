@@ -5,7 +5,7 @@
 .dashboard-top p { margin: 0; color: var(--muted); font-size: 12px; }
 .dashboard-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .progress-card, .extra-card, .member-card { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-.progress-card { margin-bottom: 20px; padding: 17px 19px; border-top: 3px solid var(--gold); }
+.progress-card { margin-bottom: 20px; padding: 17px 19px; border-top: 3px solid var(--red); }
 .progress-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; font-weight: 650; }
 .progress-line span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
 .progress-track { height: 6px; margin-top: 12px; overflow: hidden; background: var(--line); }
