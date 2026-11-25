@@ -5,7 +5,7 @@
 .dashboard-top p { margin: 0; color: var(--muted); font-size: 12px; }
 .dashboard-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .progress-card, .extra-card, .member-card { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
-.progress-card { margin-bottom: 20px; padding: 17px 19px; }
+.progress-card { margin-bottom: 20px; padding: 17px 19px; border-top: 3px solid var(--gold); }
 .progress-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; font-weight: 650; }
 .progress-line span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
 .progress-track { height: 6px; margin-top: 12px; overflow: hidden; background: var(--line); }
@@ -22,7 +22,7 @@
 .extra-current { margin-top: 7px !important; color: var(--ink) !important; font-weight: 600; }
 .extra-form { display: flex; align-items: center; gap: 8px; }
 .extra-form input { width: 105px; height: 36px; padding: 0 9px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-raised); color: var(--ink); }
-.member-card { margin-bottom: 13px; }
+.member-card { margin-bottom: 13px; border-top: 2px solid var(--red); }
 .team-essay-card, .team-essay-card .essay-table-wrap, .team-essay-card .team-essay-table, .team-essay-card .team-essay-table tbody, .team-essay-card .team-essay-table tr, .team-essay-card .team-essay-table td { background-color: var(--surface); color: var(--ink); }
 .member-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .member-heading h2 { margin: 0; font-size: 14px; font-weight: 680; }
@@ -49,7 +49,7 @@
 .row-save { white-space: nowrap; }
 .locked-row { background: var(--surface-raised); }
 .dashboard-notice { margin: 0 0 13px; padding: 10px 12px; border-radius: 4px; background: var(--soft-green); color: var(--blue); font-size: 11px; }
-.dashboard-notice.error { background: var(--soft-red); color: var(--red); }
+.dashboard-notice.error { background: var(--soft-red); color: var(--ink); border-left: 3px solid var(--red); }
 .dashboard-notice.success { background: var(--soft-green); color: var(--green); }
 @media (max-width: 720px) {
   .dashboard-top { display: block; }

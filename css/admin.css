@@ -4,7 +4,7 @@
 .admin-heading .eyebrow { margin: 0; }
 .admin-title { font-size: 29px; }
 .admin-subtitle { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.admin-team { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.admin-team { margin-bottom: 12px; border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 6px; background: var(--surface); }
 .admin-team-summary { display: grid; grid-template-columns: minmax(130px, 1fr) 130px 140px 150px auto; align-items: center; gap: 14px; padding: 14px 16px; }
 .admin-team-name { font-size: 13px; font-weight: 700; }
 .admin-metric { color: var(--muted); font-size: 10px; line-height: 1.5; }
@@ -24,7 +24,7 @@
 .admin-score-select { min-width: 88px; height: 34px; padding: 0 7px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-raised); color: var(--ink); }
 .admin-essay-actions .button { min-width: 74px; }
 .drop-rule { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
-.excluded-label { display: inline-block; margin-left: 8px; padding: 3px 6px; border: 1px solid #574c3b; color: #e7bd79; font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.excluded-label { display: inline-block; margin-left: 8px; padding: 3px 6px; border: 1px solid var(--gold); color: var(--gold); font-size: 9px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
 .admin-extras { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .admin-extras strong { color: var(--ink); }
 .admin-extra-value { width: 115px; height: 34px; padding: 0 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-raised); color: var(--ink); }
