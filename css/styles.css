@@ -1,17 +1,19 @@
 :root {
-  color-scheme: light;
-  --ink: #242820;
-  --muted: #70746a;
-  --paper: #f5f4ee;
-  --surface: #fff;
-  --line: #dedfd5;
-  --green: #354f40;
-  --green-dark: #293c30;
-  --red: #8e3736;
-  --soft-green: #edf3ee;
-  --soft-red: #f7eeee;
-  --shadow: 0 8px 24px rgb(27 39 31 / 5%);
-  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color-scheme: dark;
+  --ink: #e9eef5;
+  --muted: #a0adbc;
+  --paper: #101720;
+  --surface: #17212c;
+  --surface-raised: #1d2a37;
+  --line: #2c3b4a;
+  --blue: #65adff;
+  --green: var(--blue);
+  --green-dark: #3f91e5;
+  --red: #ff858d;
+  --soft-green: #1d344b;
+  --soft-red: #3b252d;
+  --shadow: 0 14px 36px rgb(0 0 0 / 25%);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -19,24 +21,27 @@
 body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; background: var(--paper); color: var(--ink); }
 a { color: inherit; text-decoration: none; }
 button, input, select { font: inherit; }
+select { color-scheme: dark; }
+select option { background-color: var(--surface-raised); color: var(--ink); }
+select option:checked { background-color: var(--blue); color: #101720; }
 .site-header { min-height: 68px; display: flex; align-items: center; justify-content: space-between; padding: 0 max(2vw, 24px); background: var(--surface); border-bottom: 1px solid var(--line); }
 .brand { display: inline-flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 700; letter-spacing: -.025em; }
-.brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 4px; background: var(--green); color: #fff; font-size: 12px; letter-spacing: -.04em; }
+.brand-mark { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 4px; background: var(--blue); color: #101720; font-size: 12px; letter-spacing: -.04em; }
 .brand small { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; }
 .site-header nav { display: flex; align-items: center; gap: 7px; }
 .nav-link { padding: 10px 13px; border-radius: 4px; font-size: 12px; font-weight: 650; transition: background-color .15s ease, color .15s ease; }
-.nav-link:hover, .back-link:hover { color: var(--green); }
-.subtle-link { background: var(--green); color: #fff; }
-.subtle-link:hover { background: var(--green-dark); color: #fff; }
+.nav-link:hover, .back-link:hover { color: var(--blue); }
+.subtle-link { background: var(--blue); color: #101720; }
+.subtle-link:hover { background: var(--green-dark); color: #08111b; }
 .page-shell { width: min(1040px, 90vw); margin: 0 auto; flex: 1; }
 .button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 17px; border: 1px solid transparent; border-radius: 5px; font-size: 12px; font-weight: 650; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
 .button:disabled { cursor: not-allowed; opacity: .55; }
-.button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid #98b29f; outline-offset: 2px; }
-.button-primary { background: var(--green); color: #fff; }
+.button:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.button-primary { background: var(--blue); color: #101720; }
 .button-primary:hover:not(:disabled) { background: var(--green-dark); }
 .button-secondary { border-color: var(--line); background: var(--surface); color: var(--ink); }
-.button-secondary:hover:not(:disabled) { border-color: #a8b4aa; background: #f9faf8; }
-.button-danger { border-color: #e6caca; background: #fff; color: var(--red); }
+.button-secondary:hover:not(:disabled) { border-color: var(--blue); background: var(--surface-raised); }
+.button-danger { border-color: var(--line); background: var(--surface); color: var(--red); }
 .button-danger:hover:not(:disabled) { background: var(--soft-red); }
 .button-small { min-height: 34px; padding: 0 11px; font-size: 11px; }
 .hidden { display: none !important; }
@@ -49,14 +54,14 @@ button, input, select { font: inherit; }
 .login-panel > .muted { margin: 0 0 25px; font-size: 13px; }
 .login-form label { display: block; margin-bottom: 7px; font-size: 12px; font-weight: 650; }
 .input-action { display: flex; gap: 8px; }
-.input-action input { min-width: 0; height: 44px; flex: 1; padding: 0 11px; border: 1px solid #cfd5ce; border-radius: 3px; background: #fff; color: var(--ink); }
-.input-action input::placeholder { color: #969e97; }
+.input-action input { min-width: 0; height: 44px; flex: 1; padding: 0 11px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface-raised); color: var(--ink); }
+.input-action input::placeholder { color: var(--muted); }
 .form-message { min-height: 16px; margin: 9px 0 0; color: var(--red); font-size: 12px; }
 .login-panel .fine-print { margin: 20px 0 0; }
-.state-card { min-height: 125px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 24px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 13px; }
+.state-card { min-height: 125px; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 24px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 13px; }
 .state-card.error-state { display: block; padding: 28px; color: var(--muted); line-height: 1.6; text-align: center; }
 .state-card.error-state strong { display: block; margin-bottom: 4px; color: var(--ink); }
-.spinner { width: 16px; height: 16px; border: 2px solid #dce2dc; border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (max-width: 620px) {
   .site-header { min-height: 62px; padding: 0 14px; }
