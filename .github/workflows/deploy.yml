@@ -36,7 +36,9 @@ jobs:
           mkdir -p _site
           cp index.html submit.html admin.html _site/
           cp -R css js _site/
-          cp -R data _site/
+          mkdir -p _site/data
+          cp data/teams.json _site/data/teams.json
+          test -s _site/data/teams.json
 
   deploy:
     if: github.event_name != 'pull_request'
@@ -57,7 +59,9 @@ jobs:
           mkdir -p _site
           cp index.html submit.html admin.html _site/
           cp -R css js _site/
-          cp -R data _site/
+          mkdir -p _site/data
+          cp data/teams.json _site/data/teams.json
+          test -s _site/data/teams.json
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload site artifact
