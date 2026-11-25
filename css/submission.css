@@ -4,7 +4,7 @@
 .dashboard-top h1, .admin-title { margin: 5px 0 6px; font-size: 30px; font-weight: 700; letter-spacing: -.05em; }
 .dashboard-top p { margin: 0; color: var(--muted); font-size: 12px; }
 .dashboard-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.progress-card, .extra-card, .member-card { border: 1px solid var(--line); background: var(--surface); }
+.progress-card, .extra-card, .member-card { border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .progress-card { margin-bottom: 20px; padding: 17px 19px; }
 .progress-line { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 12px; font-weight: 650; }
 .progress-line span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -12,7 +12,7 @@
 .progress-fill { height: 100%; background: var(--green); transition: width .25s ease; }
 .progress-caption { margin-top: 8px; color: var(--muted); font-size: 10px; }
 .team-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: -6px 0 20px; }
-.team-totals > div { padding: 14px 18px; border: 1px solid var(--line); background: var(--surface); }
+.team-totals > div { padding: 14px 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .team-totals span { display: block; color: var(--muted); font-size: 10px; }
 .team-totals strong { display: block; margin-top: 5px; font-size: 19px; font-variant-numeric: tabular-nums; }
 .team-totals small { color: var(--muted); font-size: 10px; font-weight: 500; }

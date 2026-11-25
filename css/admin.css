@@ -4,7 +4,7 @@
 .admin-heading .eyebrow { margin: 0; }
 .admin-title { font-size: 29px; }
 .admin-subtitle { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.admin-team { margin-bottom: 12px; border: 1px solid var(--line); background: var(--surface); }
+.admin-team { margin-bottom: 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .admin-team-summary { display: grid; grid-template-columns: minmax(130px, 1fr) 130px 140px 150px auto; align-items: center; gap: 14px; padding: 14px 16px; }
 .admin-team-name { font-size: 13px; font-weight: 700; }
 .admin-metric { color: var(--muted); font-size: 10px; line-height: 1.5; }
@@ -28,7 +28,7 @@
 .admin-extras { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 12px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 .admin-extras strong { color: var(--ink); }
 .admin-extra-value { width: 115px; height: 34px; padding: 0 8px; border: 1px solid #cfd5ce; border-radius: 3px; }
-.admin-grid-wrap { overflow-x: auto; border: 1px solid var(--line); background: #fff; }
+.admin-grid-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 5px; background: #fff; }
 .admin-grid-table { width: 100%; min-width: 1000px; border-collapse: collapse; }
 .admin-grid-table th, .admin-grid-table td { padding: 8px 9px; border-bottom: 1px solid #edf0eb; text-align: left; vertical-align: middle; }
 .admin-grid-table thead th { position: sticky; top: 0; z-index: 1; height: 39px; background: #fafbf8; color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap; }
@@ -41,7 +41,7 @@
 .admin-drop-choice { width: 112px; min-width: 0; height: 32px; border: 1px solid #cfd5ce; border-radius: 3px; background: #fff; font-size: 10px; }
 .admin-save-drop { white-space: nowrap; }
 .admin-grid-table .status-pill { white-space: nowrap; }
-.admin-audit { margin-top: 24px; padding: 16px; border: 1px solid var(--line); background: var(--surface); }
+.admin-audit { margin-top: 24px; padding: 16px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
 .admin-audit h2 { margin: 0 0 10px; font-size: 15px; font-weight: 680; }
 .audit-list { color: var(--muted); font-size: 10px; line-height: 1.7; }
 .audit-item { padding: 8px 0; border-top: 1px solid #edf0eb; overflow-wrap: anywhere; }

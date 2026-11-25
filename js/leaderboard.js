@@ -12,7 +12,6 @@ function setConnection(connected) {
 function state(message, error = false) { outlet.innerHTML = `<div class="state-card ${error ? "error-state" : ""}">${error ? `<strong>Leaderboard unavailable</strong>${message}<br><button class="button button-secondary button-small" id="retry-load" style="margin-top:14px">Try again</button>` : message}</div>`; document.querySelector("#retry-load")?.addEventListener("click", load); }
 function escapeHTML(value) { return String(value).replace(/[&<>"']/g, char => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char])); }
 async function load() {
-  setConnection(false);
   if (!isConfigured()) { state(configurationMessage(), true); return; }
   if (!hasRendered) outlet.innerHTML = '<div class="state-card loading-card"><span class="spinner" aria-hidden="true"></span><span>Loading the leaderboard…</span></div>';
   try {
