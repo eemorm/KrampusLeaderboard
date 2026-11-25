@@ -10,6 +10,7 @@ submit.html                        Team PIN portal
 admin.html                         Administrator dashboard
 css/                               Shared and page styles
 js/                                Browser modules and scoring logic
+data/teams.json                    Local team/member display-name mapping
 supabase/schema.sql                Schema, seed data, RLS, and RPCs
 supabase/functions/competition-api/ PIN verification and bootstrap function
 scripts/bootstrap-credentials.mjs  One-time hidden PIN setup prompt
@@ -77,11 +78,13 @@ python3 -m http.server 8000
 
 Visit `http://localhost:8000`. Test the leaderboard, each team PIN, score entry, extra points, admin corrections, and audit history. Never test with real competition scores until the competition is ready. The public view shows no standings until the first essay or extra-points submission is locked.
 
-## 4. Team and member setup
+## 4. Team and member display names
 
-The SQL seed is the central source for team/member names. Replace names in Supabase **Table Editor** by editing `teams.team_name` and `members.member_name`; the pages read these values from the database and do not duplicate names in JavaScript. Keep exactly seven teams, member numbers sequential within each team, six teams with four members and one with five. Keep each member’s 15 seeded essay records. The overview automatically derives the essay maximum from member count.
+Edit only `data/teams.json` to change the seven team names and 29 member names. Each team entry has its existing team UUID, a `database_name` alias used to match the public leaderboard (whose existing view does not expose team IDs), a local `name`, and member names keyed by the database `member_number`. Keep six teams at four members and Team 7 at five. Do not change IDs, database aliases, or member numbers. If a team has already been renamed in the database, the public leaderboard will show an “Unmapped team” fallback until the `database_name` alias is set to that current database label. The authenticated team and admin dashboards map by team UUID and member number, never array order.
 
-The one-time bootstrap script maps PINs by the current team names. If you rename teams before PIN setup, use the new names at the prompts. Do not rename teams while credential bootstrap is running.
+The one-time bootstrap script maps PINs by the current database team names. If you rename teams before PIN setup, use those exact database names at the prompts. Do not rename teams while credential bootstrap is running.
+
+**Privacy boundary:** The public Supabase leaderboard view contains only team name and total score, and the public page renders only rank, team name, and total score. Member names are not queried from Supabase for the public page. However, GitHub Pages is static hosting: `data/teams.json` is publicly downloadable. Do not put real member names in this file if they must be confidential from website visitors; hiding them behind the team/admin sign-in UI does not make the file private. Secure delivery of names would require a protected server-side source, which this frontend-only task does not add.
 
 ## 5. GitHub Pages deployment
 

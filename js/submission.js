@@ -1,6 +1,7 @@
 import {isConfigured, configurationMessage, login, createPrivateClient} from "./supabase.js";
 import {competitionPoints, formatScore, summarizeTeam} from "./scoring.js";
 import {readToken, storeToken, clearToken, escapeHTML, scoreOptions} from "./authentication.js";
+import {loadTeamConfig, getTeamById, mapMembers} from "./team-config.js";
 
 const loginPanel = document.querySelector("#login-panel");
 const dashboard = document.querySelector("#team-dashboard");
@@ -66,9 +67,22 @@ function signOut() {
 }
 
 async function loadDashboard() {
-  const {data, error} = await client.rpc("team_dashboard");
+  const [identity, dashboardResult, config] = await Promise.all([
+    client.from("teams").select("id").single(),
+    client.rpc("team_dashboard"),
+    loadTeamConfig()
+  ]);
+  if (identity.error) throw identity.error;
+  const {data, error} = dashboardResult;
   if (error) throw error;
-  team = data;
+  const configuredTeam = getTeamById(config, identity.data.id);
+  const mapping = mapMembers(configuredTeam, data.members || []);
+  team = {
+    ...data,
+    team_name: configuredTeam?.name || `Unmapped team (${identity.data.id})`,
+    members: mapping.members,
+    member_mapping_complete: mapping.complete
+  };
   render();
 }
 
@@ -82,7 +96,7 @@ function renderEssayRow(essayNumber, members) {
   const scores = essays.map((essay, index) => {
     const correction = !essay.is_locked && essay.raw_score !== null;
     const disabled = essay.is_locked || correction;
-    return `<td><div class="grid-score-cell"><select class="raw-score" data-member-number="${index + 1}" aria-label="${escapeHTML(members[index].member_name)} essay ${essayNumber} score" ${disabled ? "disabled" : ""}>${scoreOptions(essay.raw_score)}</select><span class="points-output">${essay.competition_points === null ? "—" : `${essay.competition_points} pts`}</span></div></td>`;
+    return `<td><div class="grid-score-cell"><select class="raw-score" data-member-number="${members[index].member_number}" aria-label="${escapeHTML(members[index].display_name)} essay ${essayNumber} score" ${disabled ? "disabled" : ""}>${scoreOptions(essay.raw_score)}</select><span class="points-output">${essay.competition_points === null ? "—" : `${essay.competition_points} pts`}</span></div></td>`;
   }).join("");
   const action = locked
     ? '<span class="status-pill locked">Locked</span>'
@@ -104,6 +118,7 @@ function render() {
       <div><p class="eyebrow">TEAM SCORE DASHBOARD</p><h1>${escapeHTML(team_name)}</h1><p>${members.length} competitors · ${summary.maximum} score entries</p></div>
       <div class="dashboard-actions"><button class="button button-secondary button-small" id="refresh-dashboard">Refresh</button><button class="button button-secondary button-small" id="team-sign-out">Sign out</button></div>
     </div>
+    ${team.member_mapping_complete ? "" : '<div class="dashboard-notice error" role="alert">Some competitors could not be matched to the local name list. Unmapped records are labeled by competitor number; check data/teams.json before submitting scores.</div>'}
     <section class="progress-card">
       <div class="progress-line"><span>Essay submission progress</span><span>${summary.submitted} / ${summary.maximum} Scores Submitted</span></div>
       <div class="progress-track" role="progressbar" aria-valuenow="${summary.submitted}" aria-valuemin="0" aria-valuemax="${summary.maximum}"><div class="progress-fill" style="width:${summary.maximum ? summary.submitted / summary.maximum * 100 : 0}%"></div></div>
@@ -114,7 +129,7 @@ function render() {
       <form class="extra-form" id="extra-form"><input aria-label="Team extra points" type="number" step="1" id="extra-points" ${extra_locked || extraInCorrection ? "disabled" : ""} value="${extra_points ?? ""}" placeholder="Points"><button class="button button-primary button-small" type="submit" ${extra_locked || extraInCorrection ? "disabled" : ""}>${extra_locked ? "Locked" : extraInCorrection ? "Awaiting admin" : "Submit & lock"}</button></form>
     </section>
     <section class="member-card team-essay-card"><div class="member-heading"><h2>Team essays</h2><span class="member-total">One row locks for every member</span></div>
-      <div class="essay-table-wrap" tabindex="0" role="region" aria-label="Team essay scores"><table class="essay-table team-essay-table"><thead><tr><th scope="col">Essay</th>${members.map(member => `<th scope="col">${escapeHTML(member.member_name)}</th>`).join("")}<th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+      <div class="essay-table-wrap" tabindex="0" role="region" aria-label="Team essay scores"><table class="essay-table team-essay-table"><thead><tr><th scope="col">Essay</th>${members.map(member => `<th scope="col">${escapeHTML(member.display_name)}</th>`).join("")}<th scope="col">Status</th><th scope="col">Action</th></tr></thead>
       <tbody>${essayNumbers.map(number => renderEssayRow(number, members)).join("")}</tbody></table></div>
     </section>`;
 
@@ -135,7 +150,10 @@ function render() {
   dashboard.querySelectorAll(".row-save").forEach(button => button.addEventListener("click", async () => {
     const row = button.closest("tr");
     const essayNumber = Number(row.dataset.essayNumber);
-    const values = [...row.querySelectorAll(".raw-score")].map((select, index) => select.disabled ? team.members[index].essays.find(item => item.essay_number === essayNumber).raw_score : select.value);
+    const values = [...row.querySelectorAll(".raw-score")].map(select => {
+      const member = team.members.find(item => Number(item.member_number) === Number(select.dataset.memberNumber));
+      return select.disabled ? member?.essays.find(item => item.essay_number === essayNumber).raw_score : select.value;
+    });
     if (values.some(value => value === "" || value === null)) return notice("Choose a score for every team member first.", "error");
     if (!confirm(`Submit and lock Essay ${essayNumber} for the whole team? Locked scores cannot be changed by the team.`)) return;
     button.disabled = true;

@@ -1,6 +1,7 @@
 import {isConfigured, configurationMessage, login, createPrivateClient} from "./supabase.js";
 import {formatScore} from "./scoring.js";
 import {readToken, storeToken, clearToken, escapeHTML, scoreOptions} from "./authentication.js";
+import {loadTeamConfig, getTeamById, mapMembers} from "./team-config.js";
 
 const loginPanel = document.querySelector("#admin-login");
 const dashboard = document.querySelector("#admin-dashboard");
@@ -43,13 +44,19 @@ async function start() {
 }
 
 async function load() {
-  const [overview, audit] = await Promise.all([
+  const [overview, audit, config] = await Promise.all([
     client.rpc("admin_overview"),
-    client.rpc("admin_audit_log", {p_limit: 30})
+    client.rpc("admin_audit_log", {p_limit: 30}),
+    loadTeamConfig()
   ]);
   if (overview.error) throw overview.error;
   if (audit.error) throw audit.error;
-  render(overview.data, audit.data || []);
+  const teams = (overview.data || []).map(team => {
+    const configuredTeam = getTeamById(config, team.id);
+    const mapping = mapMembers(configuredTeam, team.members || []);
+    return {...team, team_name: configuredTeam?.name || `Unmapped team (${team.id})`, members: mapping.members, member_mapping_complete: mapping.complete};
+  });
+  render(teams, audit.data || []);
 }
 
 function signOut() {
@@ -93,9 +100,10 @@ function renderTeam(team) {
       <div class="admin-metric">Extra points<strong>${team.extra_locked ? "Locked" : "Pending"} · ${team.extra_points === null ? "—" : formatScore(team.extra_points)}</strong></div>
       <button class="admin-toggle" type="button" aria-expanded="false">Show scores</button>
     </div>
+    ${team.member_mapping_complete ? "" : '<p class="drop-rule">Some competitors could not be matched to data/teams.json. Unmapped records are labeled by competitor number.</p>'}
     <div class="admin-team-detail hidden">
       ${mayDropEssay ? `<p class="drop-rule">Choose one member’s score to exclude for each essay. ${excludedCount} / 15 selected.</p>` : ""}
-      <div class="admin-grid-wrap" tabindex="0" role="region" aria-label="${escapeHTML(team.team_name)} essay scores"><table class="admin-grid-table"><thead><tr><th scope="col">Essay</th>${team.members.map(member => `<th scope="col">${escapeHTML(member.member_name)}</th>`).join("")}${mayDropEssay ? '<th scope="col">Excluded member</th>' : ""}<th scope="col">Status</th><th scope="col">Actions</th></tr></thead><tbody>${essayNumbers.map(number => renderEssayRow(team, number, mayDropEssay, excludedByEssay[number])).join("")}</tbody></table></div>
+      <div class="admin-grid-wrap" tabindex="0" role="region" aria-label="${escapeHTML(team.team_name)} essay scores"><table class="admin-grid-table"><thead><tr><th scope="col">Essay</th>${team.members.map(member => `<th scope="col">${escapeHTML(member.display_name)}</th>`).join("")}${mayDropEssay ? '<th scope="col">Excluded member</th>' : ""}<th scope="col">Status</th><th scope="col">Actions</th></tr></thead><tbody>${essayNumbers.map(number => renderEssayRow(team, number, mayDropEssay, excludedByEssay[number])).join("")}</tbody></table></div>
       ${renderExtras(team)}
     </div>
   </section>`;
@@ -107,9 +115,9 @@ function renderEssayRow(team, essayNumber, mayDropEssay, excludedEssay) {
   const fullyLocked = lockedCount === essays.length;
   const missingCount = essays.filter(essay => essay.raw_score === null).length;
   const status = fullyLocked ? "Locked" : lockedCount ? `Partially locked · ${lockedCount}/${essays.length}` : "Unlocked";
-  const scores = essays.map((essay, index) => `<td><div class="admin-grid-score"><select class="admin-score-select" data-member-number="${index + 1}" data-current-score="${essay.raw_score ?? ""}" aria-label="${escapeHTML(team.members[index].member_name)} essay ${essayNumber} score">${scoreOptions(essay.raw_score)}</select><span class="admin-points">${essay.competition_points === null ? "—" : `${essay.competition_points} pts`}</span></div></td>`).join("");
+  const scores = essays.map((essay, index) => `<td><div class="admin-grid-score"><select class="admin-score-select" data-member-number="${team.members[index].member_number}" data-current-score="${essay.raw_score ?? ""}" aria-label="${escapeHTML(team.members[index].display_name)} essay ${essayNumber} score">${scoreOptions(essay.raw_score)}</select><span class="admin-points">${essay.competition_points === null ? "—" : `${essay.competition_points} pts`}</span></div></td>`).join("");
   const exclusion = mayDropEssay
-    ? `<td><div class="admin-exclusion"><select class="admin-drop-choice" aria-label="Member excluded for essay ${essayNumber}" ${fullyLocked ? "" : "disabled"}><option value="">Choose member</option>${essays.map((essay, index) => `<option value="${essay.id}" ${essay.is_dropped ? "selected" : ""}>${escapeHTML(team.members[index].member_name)}</option>`).join("")}</select><button class="button button-secondary button-small admin-save-drop" type="button" data-current-drop="${excludedEssay?.id || ""}" ${fullyLocked ? "" : "disabled"}>Save choice</button></div></td>`
+    ? `<td><div class="admin-exclusion"><select class="admin-drop-choice" aria-label="Member excluded for essay ${essayNumber}" ${fullyLocked ? "" : "disabled"}><option value="">Choose member</option>${essays.map((essay, index) => `<option value="${essay.id}" ${essay.is_dropped ? "selected" : ""}>${escapeHTML(team.members[index].display_name)}</option>`).join("")}</select><button class="button button-secondary button-small admin-save-drop" type="button" data-current-drop="${excludedEssay?.id || ""}" ${fullyLocked ? "" : "disabled"}>Save choice</button></div></td>`
     : "";
   const lockText = fullyLocked ? "Unlock essay" : lockedCount ? "Lock all" : "Lock essay";
   return `<tr class="admin-grid-row" data-essay-number="${essayNumber}" data-team="${team.id}" data-locked="${fullyLocked}" data-locked-count="${lockedCount}" data-member-count="${essays.length}" data-missing-count="${missingCount}" data-essay-ids="${essays.map(essay => essay.id).join(",")}"><th scope="row">Essay ${essayNumber}</th>${scores}${exclusion}<td><span class="status-pill ${fullyLocked ? "locked" : ""}">${status}</span></td><td><div class="admin-row-actions"><button class="button button-secondary button-small admin-save-row" type="button">Save scores</button><button class="button ${fullyLocked ? "button-secondary" : "button-primary"} button-small admin-group-lock" type="button" data-lock="${!fullyLocked}" ${!fullyLocked && missingCount ? "disabled title=\"Enter every member score before locking\"" : ""}>${lockText}</button></div></td></tr>`;
