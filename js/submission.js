@@ -120,21 +120,24 @@ function renderEssayRow(essayNumber, members) {
 function render() {
   const {members, team_name} = team;
   const summary = summarizeTeam(members);
-  const complete = summary.submitted === summary.maximum;
   const essayNumbers = members[0]?.essays.map(essay => essay.essay_number) || [];
+  const essayCount = team.essay_count ?? essayNumbers.length;
+  const maximum = members.length * essayCount;
+  const complete = maximum > 0 && summary.submitted === maximum;
+  const teamTotal = team.overall_score ?? summary.essayTotal + (team.extra_locked ? Number(team.extra_points || 0) : 0);
   dashboard.innerHTML = `
     <div class="dashboard-notice hidden" role="status"></div>
     <div class="dashboard-top">
-      <div><p class="eyebrow">TEAM SCORE DASHBOARD</p><h1>${escapeHTML(team_name)}</h1><p>${members.length} competitors · ${summary.maximum} score entries</p></div>
+      <div><p class="eyebrow">TEAM SCORE DASHBOARD</p><h1>${escapeHTML(team_name)}</h1></div>
       <div class="dashboard-actions"><button class="button button-secondary button-small" id="refresh-dashboard">Refresh</button><button class="button button-secondary button-small" id="team-sign-out">Sign out</button></div>
     </div>
     ${team.member_mapping_complete ? "" : '<div class="dashboard-notice error" role="alert">Some competitors could not be matched to the local name list. Unmapped records are labeled by competitor number; check data/teams.json before submitting scores.</div>'}
     <section class="progress-card">
-      <div class="progress-line"><span>Essay submission progress</span><span>${summary.submitted} / ${summary.maximum} Scores Submitted</span></div>
-      <div class="progress-track" role="progressbar" aria-valuenow="${summary.submitted}" aria-valuemin="0" aria-valuemax="${summary.maximum}"><div class="progress-fill" style="width:${summary.maximum ? summary.submitted / summary.maximum * 100 : 0}%"></div></div>
+      <div class="progress-line"><span>Essay submission progress</span><span>${summary.submitted} / ${maximum} Scores Submitted</span></div>
+      <div class="progress-track" role="progressbar" aria-valuenow="${summary.submitted}" aria-valuemin="0" aria-valuemax="${maximum}"><div class="progress-fill" style="width:${maximum ? summary.submitted / maximum * 100 : 0}%"></div></div>
       <div class="progress-caption">${complete ? "All team essays are submitted and locked." : summary.submitted === 0 ? "Not started" : "In progress · Submit an essay row at a time."}</div>
     </section>
-    <div class="team-totals"><div><span>Team essay total</span><strong>${formatScore(summary.essayTotal)} <small>pts</small></strong></div></div>
+    <div class="team-totals"><div><span>Team total</span><strong>${formatScore(teamTotal)} <small>pts</small></strong></div></div>
     <section class="member-card team-essay-card"><div class="member-heading"><h2>Team essays</h2><span class="member-total">One row locks for every member</span></div>
       <div class="essay-table-wrap" tabindex="0" role="region" aria-label="Team essay scores"><table class="essay-table team-essay-table"><thead><tr><th scope="col">Essay</th>${members.map(member => `<th scope="col">${escapeHTML(member.display_name)}</th>`).join("")}<th scope="col">Status</th><th scope="col">Action</th></tr></thead>
       <tbody>${essayNumbers.map(number => renderEssayRow(number, members)).join("")}</tbody></table></div>
@@ -186,3 +189,20 @@ document.addEventListener("visibilitychange", () => {
     loadDashboard().catch(error => notice(error.message, "error"));
   }
 });
+
+let checkingEssayCount = false;
+setInterval(async () => {
+  if (!client || !team || document.visibilityState !== "visible" || checkingEssayCount) return;
+  checkingEssayCount = true;
+  try {
+    const {data, error} = await client.rpc("team_dashboard");
+    if (error || !data) return;
+    const currentCount = team.essay_count ?? team.members[0]?.essays.length;
+    const savedCount = data.essay_count ?? data.members?.[0]?.essays.length;
+    if (savedCount !== currentCount) await loadDashboard();
+  } catch (error) {
+    notice(error.message, "error");
+  } finally {
+    checkingEssayCount = false;
+  }
+}, 15000);

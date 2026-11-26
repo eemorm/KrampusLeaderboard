@@ -2,6 +2,13 @@
 .admin-dashboard { margin: 8px 0 65px; }
 .admin-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
 .admin-heading .eyebrow { margin: 0; }
+.admin-heading-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.essay-count-control { display: grid; gap: 3px; justify-items: center; }
+.essay-count-title { color: var(--muted); font-size: 10px; font-weight: 650; white-space: nowrap; }
+.essay-stepper { display: flex; align-items: center; height: 30px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.essay-stepper button { width: 30px; height: 30px; border: 0; background: var(--surface-raised); color: var(--ink); font-size: 17px; cursor: pointer; }
+.essay-stepper button:disabled { opacity: .4; cursor: default; }
+.essay-stepper output { min-width: 34px; padding: 0 5px; text-align: center; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .admin-title { font-size: 29px; }
 .admin-subtitle { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .admin-team { margin-bottom: 12px; border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: 6px; background: var(--surface); }
@@ -55,7 +62,8 @@
   .admin-essay-actions { grid-column: 1 / -1; }
 }
 @media (max-width: 600px) {
-  .admin-heading { align-items: center; }
+  .admin-heading { align-items: flex-start; flex-direction: column; }
+  .admin-heading-actions { justify-content: flex-start; }
   .admin-title { font-size: 25px; }
   .admin-team-detail { padding: 0 10px 12px; }
   .admin-essay-actions .button { min-width: 82px; }

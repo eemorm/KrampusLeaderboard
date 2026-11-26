@@ -45,12 +45,40 @@ function signOut() {
 }
 
 function render(teams, audit) {
+  const essayCount = teams[0]?.essay_count ?? teams[0]?.members[0]?.essays.length ?? 0;
   dashboard.innerHTML = `
-    <header class="admin-heading"><div><p class="eyebrow">ADMIN</p><h1 class="admin-title">Competition scores</h1></div><button class="button button-secondary button-small" id="admin-sign-out">Sign out</button></header>
+    <header class="admin-heading"><div><p class="eyebrow">ADMIN</p><h1 class="admin-title">Competition scores</h1></div><div class="admin-heading-actions"><div class="essay-count-control"><span class="essay-count-title">Number of Essays</span><div class="essay-stepper"><button id="admin-remove-essay" type="button" aria-label="Remove latest essay" ${essayCount <= 1 ? "disabled" : ""}>−</button><output aria-live="polite">${essayCount}</output><button id="admin-add-essay" type="button" aria-label="Add essay" ${essayCount >= 32767 ? "disabled" : ""}>+</button></div></div><button class="button button-secondary button-small" id="admin-sign-out">Sign out</button></div></header>
     <div class="dashboard-notice hidden" role="status"></div>
     <div id="admin-teams">${teams.map(renderTeam).join("")}</div>
     <section class="admin-audit"><h2>Recent changes</h2><div class="audit-list">${audit.length ? audit.map(renderAudit).join("") : "No changes recorded."}</div></section>`;
   dashboard.querySelector("#admin-sign-out").onclick = signOut;
+  const changeEssayCount = async direction => {
+    const adding = direction === 1;
+    const prompt = adding
+      ? `Add Essay ${essayCount + 1} for every team member?`
+      : `Remove Essay ${essayCount} for every team member? Only an essay with no saved scores or exclusions can be removed.`;
+    if (!confirm(prompt)) return;
+    const buttons = dashboard.querySelectorAll(".essay-stepper button");
+    buttons.forEach(button => button.disabled = true);
+    let savedCount;
+    try {
+      const {data, error} = await client.rpc(adding ? "admin_add_essay" : "admin_remove_essay");
+      if (error) throw error;
+      savedCount = data;
+    } catch (error) {
+      buttons.forEach(button => button.disabled = button.id === "admin-remove-essay" ? essayCount <= 1 : essayCount >= 32767);
+      notice(error.message || "The essay count could not be changed.", "error");
+      return;
+    }
+    try {
+      await load();
+      notice(adding ? `Essay ${savedCount} added for every team member.` : `Essay ${essayCount} removed for every team member.`);
+    } catch (error) {
+      notice(`Essay count saved as ${savedCount}, but the dashboard could not refresh: ${error.message}`, "error");
+    }
+  };
+  dashboard.querySelector("#admin-add-essay").onclick = () => changeEssayCount(1);
+  dashboard.querySelector("#admin-remove-essay").onclick = () => changeEssayCount(-1);
   dashboard.querySelectorAll(".admin-toggle").forEach(button => {
     button.addEventListener("click", () => {
       const expanded = button.getAttribute("aria-expanded") === "true";
@@ -64,7 +92,7 @@ function render(teams, audit) {
 }
 
 function renderTeam(team) {
-  const mayDropEssay = team.maximum_essays === 75;
+  const mayDropEssay = team.members.length === 5;
   const excludedByEssay = Object.fromEntries(team.members.flatMap(member => member.essays.filter(essay => essay.is_dropped).map(essay => [essay.essay_number, essay])));
   const excludedCount = Object.keys(excludedByEssay).length;
   const essayNumbers = team.members[0]?.essays.map(essay => essay.essay_number) || [];
@@ -78,7 +106,7 @@ function renderTeam(team) {
     </div>
     ${team.member_mapping_complete ? "" : '<p class="drop-rule">Some competitors could not be matched to data/teams.json. Unmapped records are labeled by competitor number.</p>'}
     <div class="admin-team-detail hidden">
-      ${mayDropEssay ? `<p class="drop-rule">Choose one member’s score to exclude for each essay. ${excludedCount} / 15 selected.</p>` : ""}
+      ${mayDropEssay ? `<p class="drop-rule">Choose one member’s score to exclude for each essay. ${excludedCount} / ${essayNumbers.length} selected.</p>` : ""}
       <div class="admin-grid-wrap" tabindex="0" role="region" aria-label="${escapeHTML(team.team_name)} essay scores"><table class="admin-grid-table"><thead><tr><th scope="col">Essay</th>${team.members.map(member => `<th scope="col">${escapeHTML(member.display_name)}</th>`).join("")}${mayDropEssay ? '<th scope="col">Excluded member</th>' : ""}<th scope="col">Status</th><th scope="col">Actions</th></tr></thead><tbody>${essayNumbers.map(number => renderEssayRow(team, number, mayDropEssay, excludedByEssay[number])).join("")}</tbody></table></div>
       ${renderExtras(team)}
     </div>

@@ -16,7 +16,7 @@ create table if not exists public.members (
 create table if not exists public.essays (
   id uuid primary key default gen_random_uuid(),
   member_id uuid not null references public.members(id) on delete cascade,
-  essay_number smallint not null check (essay_number between 1 and 15),
+  essay_number smallint not null check (essay_number >= 1),
   raw_score smallint check (raw_score between 0 and 5),
   competition_points smallint generated always as (
     (case raw_score when 0 then 0 when 1 then 0 when 2 then 9 when 3 then 13 when 4 then 15 when 5 then 18 else null end)::smallint
@@ -28,7 +28,16 @@ create table if not exists public.essays (
   check ((not is_locked) or (raw_score is not null and submitted_at is not null))
 );
 -- Also upgrades projects that already ran an earlier version of this schema.
+alter table public.essays drop constraint if exists essays_essay_number_check;
+alter table public.essays add constraint essays_essay_number_check check (essay_number >= 1);
 alter table public.essays add column if not exists is_dropped boolean not null default false;
+create table if not exists public.competition_settings (
+  singleton boolean primary key default true check (singleton),
+  essay_count integer not null check (essay_count between 1 and 32767)
+);
+insert into public.competition_settings(singleton,essay_count)
+select true,coalesce((select max(essay_number) from public.essays),15)
+on conflict(singleton) do nothing;
 create table if not exists public.team_extra_points (
   team_id uuid primary key references public.teams(id) on delete cascade,
   points integer,
@@ -87,7 +96,9 @@ select t.id, 'Member '||m.n, m.n from public.teams t
 cross join lateral generate_series(1,case when t.team_name='Team 7' then 5 else 4 end) m(n)
 on conflict(team_id,member_number) do nothing;
 insert into public.essays(member_id,essay_number)
-select m.id,n from public.members m cross join generate_series(1,15) n
+select m.id,n from public.members m cross join public.competition_settings c
+cross join lateral generate_series(1,c.essay_count) n
+where not exists(select 1 from public.essays e where e.member_id=m.id)
 on conflict(member_id,essay_number) do nothing;
 insert into public.team_extra_points(team_id) select id from public.teams on conflict(team_id) do nothing;
 
@@ -116,10 +127,12 @@ declare v_team uuid; result jsonb;
 begin
   v_team:=public.current_team_id();
   if v_team is null or public.is_competition_admin() then raise exception 'Team session required'; end if;
-  select jsonb_build_object('team_name',t.team_name,
+  select jsonb_build_object('team_name',t.team_name,'essay_count',(select essay_count from public.competition_settings where singleton),
+    'overall_score',coalesce((select sum(e.competition_points) from public.members m join public.essays e on e.member_id=m.id where m.team_id=t.id and e.is_locked and not e.is_dropped),0)
+      +case when x.is_locked then coalesce(x.points,0) else 0 end,
     'members',coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'member_name',m.member_name,'member_number',m.member_number,
       'essays',(select jsonb_agg(jsonb_build_object('id',e.id,'essay_number',e.essay_number,'raw_score',e.raw_score,'competition_points',e.competition_points,'is_locked',e.is_locked,'is_dropped',e.is_dropped) order by e.essay_number) from public.essays e where e.member_id=m.id)) order by m.member_number) from public.members m where m.team_id=t.id),'[]'::jsonb))
-  into result from public.teams t where t.id=v_team;
+  into result from public.teams t join public.team_extra_points x on x.team_id=t.id where t.id=v_team;
   if result is null then raise exception 'Team not found'; end if;
   return result;
 end $$;
@@ -145,7 +158,7 @@ declare v_team uuid; v_member_count integer; v_updated integer:=0; item record; 
 begin
   v_team:=public.current_team_id();
   if v_team is null or public.is_competition_admin() then raise exception 'Team session required'; end if;
-  if p_essay_number is null or p_essay_number not between 1 and 15 then raise exception 'Essay number must be 1 through 15'; end if;
+  if p_essay_number is null or p_essay_number < 1 then raise exception 'Essay number must be positive'; end if;
   select count(*) into v_member_count from public.members where team_id=v_team;
   if v_member_count not in (4,5) or p_raw_scores is null or cardinality(p_raw_scores)<>v_member_count then raise exception 'Submit one score for every team member'; end if;
   if (select count(*) from public.members m join public.essays e on e.member_id=m.id where m.team_id=v_team and e.essay_number=p_essay_number)<>v_member_count then raise exception 'Essay records are incomplete'; end if;
@@ -175,10 +188,10 @@ language plpgsql security definer set search_path=public,pg_temp as $$
 declare result jsonb;
 begin
   if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
-  select coalesce(jsonb_agg(jsonb_build_object('id',t.id,'team_name',t.team_name,'overall_score',
+  select coalesce(jsonb_agg(jsonb_build_object('id',t.id,'team_name',t.team_name,'essay_count',(select essay_count from public.competition_settings where singleton),'overall_score',
     coalesce((select sum(e.competition_points) from public.members m join public.essays e on e.member_id=m.id where m.team_id=t.id and e.is_locked and not e.is_dropped),0)+case when x.is_locked then coalesce(x.points,0) else 0 end,
     'submitted_essays',(select count(*) from public.members m join public.essays e on e.member_id=m.id where m.team_id=t.id and e.is_locked),
-    'maximum_essays',(select count(*) from public.members m where m.team_id=t.id)*15,'extra_points',x.points,'extra_locked',x.is_locked,
+    'maximum_essays',(select count(*) from public.members m where m.team_id=t.id)*(select essay_count from public.competition_settings where singleton),'extra_points',x.points,'extra_locked',x.is_locked,
     'members',(select jsonb_agg(jsonb_build_object('id',m.id,'member_name',m.member_name,'member_number',m.member_number,
       'member_total',(select coalesce(sum(e.competition_points),0) from public.essays e where e.member_id=m.id and e.is_locked),
       'essays',(select jsonb_agg(jsonb_build_object('id',e.id,'essay_number',e.essay_number,'raw_score',e.raw_score,'competition_points',e.competition_points,'is_locked',e.is_locked,'is_dropped',e.is_dropped) order by e.essay_number) from public.essays e where e.member_id=m.id)) order by m.member_number) from public.members m where m.team_id=t.id)) order by t.team_name),'[]'::jsonb)
@@ -194,12 +207,72 @@ begin
     values(auth.uid(),p_action,p_team,p_essay,p_member,p_previous,p_new);
 end $$;
 
+create or replace function public.admin_add_essay() returns integer
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_previous integer; v_next integer; v_members integer; v_inserted integer;
+begin
+  if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
+  select essay_count into v_previous from public.competition_settings where singleton for update;
+  if v_previous is null then raise exception 'Competition essay count is unavailable'; end if;
+  if (select max(essay_number) from public.essays) is distinct from v_previous then
+    raise exception 'Essay records do not match the saved count';
+  end if;
+  if v_previous >= 32767 then raise exception 'Essay number limit reached'; end if;
+  select count(*) into v_members from public.members;
+  if v_members=0 then raise exception 'No team members found'; end if;
+  if exists (
+    select 1 from public.members m
+    where (select count(*) from public.essays e where e.member_id=m.id)<>v_previous
+      or not exists(select 1 from public.essays e where e.member_id=m.id and e.essay_number=v_previous)
+  ) then raise exception 'Essay records are incomplete; repair them before adding another essay'; end if;
+  v_next:=v_previous+1;
+  insert into public.essays(member_id,essay_number)
+    select id,v_next from public.members;
+  get diagnostics v_inserted=row_count;
+  if v_inserted<>v_members then raise exception 'Essay creation was incomplete'; end if;
+  update public.competition_settings set essay_count=v_next where singleton;
+  perform public.admin_write_audit('essay_added',null,null,null,
+    jsonb_build_object('essay_count',v_previous),
+    jsonb_build_object('essay_count',v_next,'member_rows',v_inserted));
+  return v_next;
+end $$;
+
+create or replace function public.admin_remove_essay() returns integer
+language plpgsql security definer set search_path=public,pg_temp as $$
+declare v_previous integer; v_members integer; v_deleted integer;
+begin
+  if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
+  select essay_count into v_previous from public.competition_settings where singleton for update;
+  if v_previous is null then raise exception 'Competition essay count is unavailable'; end if;
+  if (select max(essay_number) from public.essays) is distinct from v_previous then
+    raise exception 'Essay records do not match the saved count';
+  end if;
+  if v_previous<=1 then raise exception 'At least one essay is required'; end if;
+  perform 1 from public.members m join public.essays e on e.member_id=m.id
+    where e.essay_number=v_previous order by m.team_id,m.member_number for update of e;
+  select count(*) into v_members from public.members;
+  if (select count(*) from public.essays where essay_number=v_previous)<>v_members then
+    raise exception 'Essay records are incomplete; repair them before removing an essay';
+  end if;
+  if exists(select 1 from public.essays where essay_number=v_previous and (raw_score is not null or is_locked or is_dropped or submitted_at is not null)) then
+    raise exception 'Essay % has scores or selections and cannot be removed',v_previous;
+  end if;
+  delete from public.essays where essay_number=v_previous;
+  get diagnostics v_deleted=row_count;
+  if v_deleted<>v_members then raise exception 'Essay removal was incomplete'; end if;
+  update public.competition_settings set essay_count=v_previous-1 where singleton;
+  perform public.admin_write_audit('essay_removed',null,null,null,
+    jsonb_build_object('essay_count',v_previous,'member_rows',v_deleted),
+    jsonb_build_object('essay_count',v_previous-1));
+  return v_previous-1;
+end $$;
+
 create or replace function public.admin_set_team_essay_lock(p_team_id uuid,p_essay_number integer,p_locked boolean) returns void
 language plpgsql security definer set search_path=public,pg_temp as $$
 declare v_member_count integer; item record; old_row jsonb; new_row jsonb;
 begin
   if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
-  if p_locked is null or p_essay_number is null or p_essay_number not between 1 and 15 then raise exception 'Essay lock selection is invalid'; end if;
+  if p_locked is null or p_essay_number is null or p_essay_number < 1 then raise exception 'Essay lock selection is invalid'; end if;
   perform 1 from public.teams where id=p_team_id for update;
   select count(*) into v_member_count from public.members where team_id=p_team_id;
   if v_member_count not in (4,5) then raise exception 'Team not found'; end if;
@@ -236,7 +309,7 @@ language plpgsql security definer set search_path=public,pg_temp as $$
 declare v_member_count integer; item record; v_score integer; old_row jsonb; new_row jsonb; v_changes integer:=0; v_cleared boolean:=false;
 begin
   if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
-  if p_essay_number is null or p_essay_number not between 1 and 15 then raise exception 'Essay number must be 1 through 15'; end if;
+  if p_essay_number is null or p_essay_number < 1 then raise exception 'Essay number must be positive'; end if;
   perform 1 from public.teams where id=p_team_id for update;
   select count(*) into v_member_count from public.members where team_id=p_team_id;
   if v_member_count not in (4,5) or p_raw_scores is null or cardinality(p_raw_scores)<>v_member_count then raise exception 'Submit one score for every team member'; end if;
@@ -410,6 +483,7 @@ end $$;
 alter table public.teams enable row level security;
 alter table public.members enable row level security;
 alter table public.essays enable row level security;
+alter table public.competition_settings enable row level security;
 alter table public.team_extra_points enable row level security;
 alter table public.team_credentials enable row level security;
 alter table public.admin_credentials enable row level security;
@@ -436,10 +510,12 @@ grant all on all tables in schema public to service_role;
 grant usage,select on all sequences in schema public to service_role;
 grant select on public.public_leaderboard to anon,authenticated;
 grant select on public.teams,public.members,public.essays,public.team_extra_points,public.audit_log to authenticated;
-revoke all on function public.current_team_id(),public.is_competition_admin(),public.team_dashboard(),public.submit_essay(uuid,integer),public.submit_team_essay(integer,integer[]),public.admin_overview(),public.admin_set_essay_lock(uuid,boolean),public.admin_set_team_essay_lock(uuid,integer,boolean),public.admin_set_team_essay_scores(uuid,integer,integer[]),public.admin_set_essay_score(uuid,integer),public.admin_set_essay_dropped(uuid,boolean),public.admin_set_extra_lock(uuid,boolean),public.admin_set_extra_points(uuid,integer),public.admin_audit_log(integer) from public,anon,authenticated;
+revoke all on function public.current_team_id(),public.is_competition_admin(),public.team_dashboard(),public.submit_essay(uuid,integer),public.submit_team_essay(integer,integer[]),public.admin_add_essay(),public.admin_remove_essay(),public.admin_overview(),public.admin_set_essay_lock(uuid,boolean),public.admin_set_team_essay_lock(uuid,integer,boolean),public.admin_set_team_essay_scores(uuid,integer,integer[]),public.admin_set_essay_score(uuid,integer),public.admin_set_essay_dropped(uuid,boolean),public.admin_set_extra_lock(uuid,boolean),public.admin_set_extra_points(uuid,integer),public.admin_audit_log(integer) from public,anon,authenticated;
 grant execute on function public.current_team_id(),public.is_competition_admin() to authenticated;
 grant execute on function public.team_dashboard() to authenticated;
 grant execute on function public.submit_team_essay(integer,integer[]) to authenticated;
+grant execute on function public.admin_add_essay() to authenticated;
+grant execute on function public.admin_remove_essay() to authenticated;
 grant execute on function public.admin_overview() to authenticated;
 grant execute on function public.admin_set_essay_lock(uuid,boolean) to authenticated;
 grant execute on function public.admin_set_team_essay_lock(uuid,integer,boolean) to authenticated;
@@ -452,3 +528,4 @@ grant execute on function public.admin_audit_log(integer) to authenticated;
 revoke all on function public.admin_write_audit(text,uuid,uuid,uuid,jsonb,jsonb) from public,anon,authenticated;
 revoke all on function public.auth_attempt_allowed(text),public.auth_clear_attempt(text),public.claim_credential_setup() from public,anon,authenticated;
 grant execute on function public.auth_attempt_allowed(text),public.auth_clear_attempt(text),public.claim_credential_setup() to service_role;
+notify pgrst, 'reload schema';

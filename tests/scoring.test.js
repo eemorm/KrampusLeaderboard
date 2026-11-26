@@ -24,6 +24,17 @@ test("calculates member/team totals and submission progress without extra points
   assert.equal(summarizeTeam(members.slice(0,4)).maximum,60);
 });
 
+test("progress grows when another essay is added for every member",()=>{
+  const members=Array.from({length:5},()=>({essays:Array.from({length:16},()=>({competition_points:null,is_locked:false}))}));
+  const summary=summarizeTeam(members);
+  assert.equal(summary.maximum,80);
+  assert.equal(summary.submitted,0);
+  members[0].essays[15]={competition_points:18,is_locked:true};
+  assert.equal(summarizeTeam(members).submitted,1);
+  members.forEach(member => member.essays.pop());
+  assert.equal(summarizeTeam(members).maximum,75);
+});
+
 test("excludes the teacher-selected essay from totals while retaining it in submitted progress",()=>{
   const members=Array.from({length:5},(_,member)=>({essays:Array.from({length:15},(_,essay)=>({competition_points:18,is_locked:member===2&&essay<2,is_dropped:member===2&&essay===0}))}));
   const summary=summarizeTeam(members,0);
