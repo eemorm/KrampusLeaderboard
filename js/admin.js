@@ -73,7 +73,7 @@ function renderTeam(team) {
       <div class="admin-team-name">${escapeHTML(team.team_name)}</div>
       <div class="admin-metric">Team score<strong>${formatScore(team.overall_score)} pts</strong></div>
       <div class="admin-metric">Essays<strong>${team.submitted_essays} / ${team.maximum_essays}</strong></div>
-      <div class="admin-metric">Extra points<strong>${team.extra_locked ? "Locked" : "Pending"} · ${team.extra_points === null ? "—" : formatScore(team.extra_points)}</strong></div>
+      <div class="admin-metric">Extra points<strong>${team.extra_locked ? "Locked" : "Pending"} · ${extraPointsLabel(team, "—")}</strong></div>
       <button class="admin-toggle" type="button" aria-expanded="false">Show scores</button>
     </div>
     ${team.member_mapping_complete ? "" : '<p class="drop-rule">Some competitors could not be matched to data/teams.json. Unmapped records are labeled by competitor number.</p>'}
@@ -101,7 +101,7 @@ function renderEssayRow(team, essayNumber, mayDropEssay, excludedEssay) {
 
 function renderExtras(team) {
   return `<div class="admin-extras">
-    <div>Team extra points: <strong>${team.extra_points === null ? "Not submitted" : formatScore(team.extra_points)}</strong> · ${team.extra_locked ? "Locked" : "Unlocked"}</div>
+    <div>Team extra points: <strong>${extraPointsLabel(team, "Not submitted")}</strong> · ${team.extra_locked ? "Locked" : "Unlocked"}</div>
     <div class="admin-essay-actions">${team.extra_locked
       ? '<button class="button button-secondary button-small admin-unlock-extra" type="button">Unlock extra points</button>'
       : `<input class="admin-extra-value" type="number" step="1" value="${team.extra_points ?? ""}" placeholder="Whole points" aria-label="Edit team extra points">
@@ -109,6 +109,12 @@ function renderExtras(team) {
          <button class="button button-primary button-small admin-lock-extra" type="button">Lock points</button>`}
     </div>
   </div>`;
+}
+
+function extraPointsLabel(team, emptyLabel) {
+  return team.extra_points === null || (!team.extra_locked && team.extra_points === 0)
+    ? emptyLabel
+    : formatScore(team.extra_points);
 }
 
 function renderAudit(item) {
@@ -164,7 +170,7 @@ function bindEssayActions() {
 function bindExtraActions() {
   dashboard.querySelectorAll(".admin-unlock-extra").forEach(button => {
     button.onclick = async () => {
-      if (!confirm("Unlock team extra points for correction? This action will be recorded.")) return;
+      if (!confirm("Unlock team extra points and clear the submitted value for an administrator correction? This action will be recorded.")) return;
       await modify("admin_set_extra_lock", {p_team_id: button.closest(".admin-team").dataset.team, p_locked: false});
     };
   });

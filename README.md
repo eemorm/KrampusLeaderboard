@@ -1,6 +1,6 @@
 # 12 Days of Krampus
 
-A responsive static website for **Ms. Mason’s AP Lang class** competition. It includes a public team leaderboard, PIN-protected team score entry, and a PIN-protected administrator workspace. The front end uses HTML, CSS, and vanilla JavaScript; Supabase provides the database, Row Level Security, and Edge Function authentication.
+A responsive static website for **Ms. Mason’s AP Lang class** competition. It includes a public team leaderboard, PIN-protected team essay score entry, and a PIN-protected administrator workspace. Administrators alone manage extra points. The front end uses HTML, CSS, and vanilla JavaScript; Supabase provides the database, Row Level Security, and Edge Function authentication.
 
 ## Project layout
 
@@ -76,7 +76,7 @@ Use a local static server so browser modules load correctly. For example:
 python3 -m http.server 8000
 ```
 
-Visit `http://localhost:8000`. Test the leaderboard, each team PIN, score entry, extra points, admin corrections, and audit history. Never test with real competition scores until the competition is ready. The public view shows no standings until the first essay or extra-points submission is locked.
+Visit `http://localhost:8000`. Test the leaderboard, each team PIN, essay score entry, admin extra points, corrections, and audit history. Never test with real competition scores until the competition is ready. The public view shows no standings until the first essay or admin extra-points entry is locked.
 
 ## 4. Team and member display names
 
@@ -109,7 +109,9 @@ Raw score conversion is centralized in `js/scoring.js` and mirrored by a stored 
 | 4 | 15 |
 | 5 | 18 |
 
-The database rejects scores outside 0–5. Teams submit one essay number at a time with one score for every member in a single atomic operation. The RPC verifies the signed team identity, recalculates points in Postgres, and locks all member scores for that essay together. Extra points are whole numbers, including negative values and zero, and are included in the public total after they are locked. Admin score corrections preserve the essay’s current lock state and are audited; administrators can also lock or unlock all team scores for an essay number together. Individual member totals remain inside the authenticated team/admin dashboard and are never in the public view.
+The database rejects scores outside 0–5. Teams submit one essay number at a time with one score for every member in a single atomic operation. The RPC verifies the signed team identity, recalculates points in Postgres, and locks all member scores for that essay together. Only administrators can enter, change, and lock extra points. Extra points are whole numbers, including negative values and zero, and are included in the public total after they are locked. The team dashboard shows essay totals only; its database response does not include extra points. Admin score corrections preserve the essay’s current lock state and are audited; administrators can also lock or unlock all team scores for an essay number together. Individual member totals remain inside the authenticated team/admin dashboard and are never in the public view.
+
+Unlocking extra points clears the previous value so an administrator can enter and lock a new one. After updating the site code, rerun `supabase/schema.sql` in the Supabase SQL Editor to remove the former team submission function and restrict extra-point reads to administrators. Teams can use **Refresh** or return to their tab to see an administrator's latest essay changes.
 
 For the five-person team, an administrator chooses one member’s score to exclude for each of the 15 essay numbers. The admin dashboard shows how many of the 15 selections have been made. Choosing a different member replaces the previous choice for that essay, and both changes are recorded in the audit log. Excluded scores still count in that member’s internal total and submission progress, but are omitted from the team total and public leaderboard.
 

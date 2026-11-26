@@ -118,10 +118,9 @@ function renderEssayRow(essayNumber, members) {
 }
 
 function render() {
-  const {members, extra_points, extra_locked, team_name} = team;
-  const summary = summarizeTeam(members, extra_points);
+  const {members, team_name} = team;
+  const summary = summarizeTeam(members);
   const complete = summary.submitted === summary.maximum;
-  const extraInCorrection = !extra_locked && extra_points !== null;
   const essayNumbers = members[0]?.essays.map(essay => essay.essay_number) || [];
   dashboard.innerHTML = `
     <div class="dashboard-notice hidden" role="status"></div>
@@ -135,10 +134,7 @@ function render() {
       <div class="progress-track" role="progressbar" aria-valuenow="${summary.submitted}" aria-valuemin="0" aria-valuemax="${summary.maximum}"><div class="progress-fill" style="width:${summary.maximum ? summary.submitted / summary.maximum * 100 : 0}%"></div></div>
       <div class="progress-caption">${complete ? "All team essays are submitted and locked." : summary.submitted === 0 ? "Not started" : "In progress · Submit an essay row at a time."}</div>
     </section>
-    <div class="team-totals"><div><span>Team essay total</span><strong>${formatScore(summary.essayTotal)} <small>pts</small></strong></div><div><span>Team overall score</span><strong>${formatScore(summary.essayTotal + (extra_locked ? Number(extra_points || 0) : 0))} <small>pts</small></strong></div></div>
-    <section class="extra-card"><div><h2>Team Extra Points</h2><p>These points are added to your team’s final score. Once submitted, only an administrator can change them.</p><p class="extra-current">Current: ${extra_points === null ? "Not submitted" : `${formatScore(extra_points)} points`} · ${extra_locked ? "Submitted & locked" : extraInCorrection ? "Administrator correction" : "Not submitted"}</p></div>
-      <form class="extra-form" id="extra-form"><input aria-label="Team extra points" type="number" step="1" id="extra-points" ${extra_locked || extraInCorrection ? "disabled" : ""} value="${extra_points ?? ""}" placeholder="Points"><button class="button button-primary button-small" type="submit" ${extra_locked || extraInCorrection ? "disabled" : ""}>${extra_locked ? "Locked" : extraInCorrection ? "Awaiting admin" : "Submit & lock"}</button></form>
-    </section>
+    <div class="team-totals"><div><span>Team essay total</span><strong>${formatScore(summary.essayTotal)} <small>pts</small></strong></div></div>
     <section class="member-card team-essay-card"><div class="member-heading"><h2>Team essays</h2><span class="member-total">One row locks for every member</span></div>
       <div class="essay-table-wrap" tabindex="0" role="region" aria-label="Team essay scores"><table class="essay-table team-essay-table"><thead><tr><th scope="col">Essay</th>${members.map(member => `<th scope="col">${escapeHTML(member.display_name)}</th>`).join("")}<th scope="col">Status</th><th scope="col">Action</th></tr></thead>
       <tbody>${essayNumbers.map(number => renderEssayRow(number, members)).join("")}</tbody></table></div>
@@ -180,27 +176,13 @@ function render() {
       notice(error.message || "The essay could not be saved. Please retry.", "error");
     }
   }));
-  dashboard.querySelector("#extra-form").addEventListener("submit", async event => {
-    event.preventDefault();
-    const input = dashboard.querySelector("#extra-points");
-    const value = input.value;
-    if (value === "" || !Number.isInteger(Number(value))) return notice("Enter a whole number for team extra points.", "error");
-    if (!confirm("Submit and lock these team extra points? Only an administrator can change them afterward.")) return;
-    const button = event.currentTarget.querySelector("button");
-    button.disabled = true;
-    button.textContent = "Saving…";
-    try {
-      const {error} = await client.rpc("submit_extra_points", {p_points: Number(value)});
-      if (error) throw error;
-      await loadDashboard();
-      notice("Team extra points submitted and locked.");
-    } catch (error) {
-      button.disabled = false;
-      button.textContent = "Submit & lock";
-      notice(error.message || "Extra points could not be saved. Please retry.", "error");
-    }
-  });
 }
 
 if (existingAdminAuth) window.location.replace("admin.html");
 else if (auth) start();
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && client && team) {
+    loadDashboard().catch(error => notice(error.message, "error"));
+  }
+});

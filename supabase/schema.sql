@@ -116,10 +116,10 @@ declare v_team uuid; result jsonb;
 begin
   v_team:=public.current_team_id();
   if v_team is null or public.is_competition_admin() then raise exception 'Team session required'; end if;
-  select jsonb_build_object('team_name',t.team_name,'extra_points',x.points,'extra_locked',x.is_locked,
+  select jsonb_build_object('team_name',t.team_name,
     'members',coalesce((select jsonb_agg(jsonb_build_object('id',m.id,'member_name',m.member_name,'member_number',m.member_number,
       'essays',(select jsonb_agg(jsonb_build_object('id',e.id,'essay_number',e.essay_number,'raw_score',e.raw_score,'competition_points',e.competition_points,'is_locked',e.is_locked,'is_dropped',e.is_dropped) order by e.essay_number) from public.essays e where e.member_id=m.id)) order by m.member_number) from public.members m where m.team_id=t.id),'[]'::jsonb))
-  into result from public.teams t join public.team_extra_points x on x.team_id=t.id where t.id=v_team;
+  into result from public.teams t where t.id=v_team;
   if result is null then raise exception 'Team not found'; end if;
   return result;
 end $$;
@@ -168,16 +168,7 @@ begin
   if v_updated=0 then raise exception 'This essay is already submitted and locked'; end if;
 end $$;
 
-create or replace function public.submit_extra_points(p_points integer) returns void
-language plpgsql security definer set search_path=public,pg_temp as $$
-declare v_team uuid;
-begin
-  v_team:=public.current_team_id();
-  if v_team is null or public.is_competition_admin() then raise exception 'Team session required'; end if;
-  update public.team_extra_points set points=p_points,is_locked=true,submitted_at=now(),updated_at=now()
-    where team_id=v_team and is_locked=false and points is null;
-  if not found then raise exception 'Team extra points are already submitted or unavailable'; end if;
-end $$;
+drop function if exists public.submit_extra_points(integer);
 
 create or replace function public.admin_overview() returns jsonb
 language plpgsql security definer set search_path=public,pg_temp as $$
@@ -347,14 +338,20 @@ end $$;
 
 create or replace function public.admin_set_extra_lock(p_team_id uuid,p_locked boolean) returns void
 language plpgsql security definer set search_path=public,pg_temp as $$
-declare old_row jsonb;
+declare old_row jsonb; new_row jsonb;
 begin
   if not public.is_competition_admin() then raise exception 'Administrator session required'; end if;
   select jsonb_build_object('points',points,'is_locked',is_locked) into old_row from public.team_extra_points where team_id=p_team_id for update;
   if old_row is null then raise exception 'Team extra points not found'; end if;
   if p_locked and (old_row->>'points') is null then raise exception 'Set extra points before locking'; end if;
-  update public.team_extra_points set is_locked=p_locked,submitted_at=case when p_locked then coalesce(submitted_at,now()) else null end,updated_at=now() where team_id=p_team_id;
-  perform public.admin_write_audit(case when p_locked then 'extra_points_locked' else 'extra_points_unlocked' end,p_team_id,null,null,old_row,jsonb_build_object('is_locked',p_locked));
+  update public.team_extra_points set
+    points=case when p_locked then points else null end,
+    is_locked=p_locked,
+    submitted_at=case when p_locked then coalesce(submitted_at,now()) else null end,
+    updated_at=now()
+    where team_id=p_team_id;
+  select jsonb_build_object('points',points,'is_locked',is_locked) into new_row from public.team_extra_points where team_id=p_team_id;
+  perform public.admin_write_audit(case when p_locked then 'extra_points_locked' else 'extra_points_unlocked' end,p_team_id,null,null,old_row,new_row);
 end $$;
 
 create or replace function public.admin_set_extra_points(p_team_id uuid,p_points integer) returns void
@@ -430,7 +427,7 @@ create policy essays_scoped_read on public.essays for select to authenticated
   using (public.is_competition_admin() or exists(select 1 from public.members m where m.id=essays.member_id and m.team_id=public.current_team_id()));
 drop policy if exists extras_scoped_read on public.team_extra_points;
 create policy extras_scoped_read on public.team_extra_points for select to authenticated
-  using (public.is_competition_admin() or team_id=public.current_team_id());
+  using (public.is_competition_admin());
 drop policy if exists audit_admin_read on public.audit_log;
 create policy audit_admin_read on public.audit_log for select to authenticated
   using (public.is_competition_admin());
@@ -439,11 +436,10 @@ grant all on all tables in schema public to service_role;
 grant usage,select on all sequences in schema public to service_role;
 grant select on public.public_leaderboard to anon,authenticated;
 grant select on public.teams,public.members,public.essays,public.team_extra_points,public.audit_log to authenticated;
-revoke all on function public.current_team_id(),public.is_competition_admin(),public.team_dashboard(),public.submit_essay(uuid,integer),public.submit_team_essay(integer,integer[]),public.submit_extra_points(integer),public.admin_overview(),public.admin_set_essay_lock(uuid,boolean),public.admin_set_team_essay_lock(uuid,integer,boolean),public.admin_set_team_essay_scores(uuid,integer,integer[]),public.admin_set_essay_score(uuid,integer),public.admin_set_essay_dropped(uuid,boolean),public.admin_set_extra_lock(uuid,boolean),public.admin_set_extra_points(uuid,integer),public.admin_audit_log(integer) from public,anon,authenticated;
+revoke all on function public.current_team_id(),public.is_competition_admin(),public.team_dashboard(),public.submit_essay(uuid,integer),public.submit_team_essay(integer,integer[]),public.admin_overview(),public.admin_set_essay_lock(uuid,boolean),public.admin_set_team_essay_lock(uuid,integer,boolean),public.admin_set_team_essay_scores(uuid,integer,integer[]),public.admin_set_essay_score(uuid,integer),public.admin_set_essay_dropped(uuid,boolean),public.admin_set_extra_lock(uuid,boolean),public.admin_set_extra_points(uuid,integer),public.admin_audit_log(integer) from public,anon,authenticated;
 grant execute on function public.current_team_id(),public.is_competition_admin() to authenticated;
 grant execute on function public.team_dashboard() to authenticated;
 grant execute on function public.submit_team_essay(integer,integer[]) to authenticated;
-grant execute on function public.submit_extra_points(integer) to authenticated;
 grant execute on function public.admin_overview() to authenticated;
 grant execute on function public.admin_set_essay_lock(uuid,boolean) to authenticated;
 grant execute on function public.admin_set_team_essay_lock(uuid,integer,boolean) to authenticated;
