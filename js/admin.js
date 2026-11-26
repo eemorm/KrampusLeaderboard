@@ -146,8 +146,22 @@ function extraPointsLabel(team, emptyLabel) {
 }
 
 function renderAudit(item) {
-  const action = String(item.action || "change").replaceAll("_", " ");
-  return `<div class="audit-item"><strong>${escapeHTML(action)}</strong> · ${escapeHTML(item.team_name || "Competition")} · ${new Date(item.created_at).toLocaleString()}<br><span>${escapeHTML(JSON.stringify({previous: item.previous_value, next: item.new_value}))}</span></div>`;
+  const actions = {
+    essay_added: "Essay added",
+    essay_removed: "Essay removed",
+    essay_locked: "Essay locked",
+    essay_unlocked: "Essay unlocked",
+    essay_score_cleared_for_resubmission: "Score cleared for resubmission",
+    essay_score_corrected: "Score changed",
+    essay_exclusion_reassigned: "Excluded score changed",
+    essay_excluded_from_team_total: "Score excluded from team total",
+    essay_restored_to_team_total: "Score restored to team total",
+    extra_points_locked: "Extra points locked",
+    extra_points_unlocked: "Extra points unlocked",
+    extra_points_corrected: "Extra points changed"
+  };
+  const action = actions[item.action] || String(item.action || "Change made").replaceAll("_", " ");
+  return `<div class="audit-item"><strong>${escapeHTML(action)}</strong> · ${escapeHTML(item.team_name || "Competition")} · ${new Date(item.created_at).toLocaleString()}</div>`;
 }
 
 function bindEssayActions() {
